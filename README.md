@@ -1,4 +1,4 @@
-# Offline School Document Chatbot
+# Offline Document Chatbot
 
 A RAG-based chatbot that runs fully offline using [Ollama](https://ollama.com). Upload PDF, DOCX, or TXT documents and ask questions; answers are based only on the content you uploaded.
 
@@ -69,7 +69,7 @@ Edit `config.py` to change:
 - `TOP_K` — Number of chunks retrieved per question.
 - `OLLAMA_BASE_URL` — Set if Ollama runs on another machine (e.g. `http://server:11434`).
 
-## School / LAN deployment
+##  LAN deployment
 
 To allow other devices on the same network to use the chatbot:
 
