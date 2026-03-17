@@ -1,14 +1,13 @@
-"""Vector store (ChromaDB) with Ollama embeddings for RAG."""
+"""Vector store (FAISS) with Ollama embeddings for RAG."""
 
 from pathlib import Path
 from typing import List
 
-from langchain_chroma import Chroma
+from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from langchain_ollama import OllamaEmbeddings
 
 from config import (
-    COLLECTION_NAME,
     EMBEDDING_MODEL,
     OLLAMA_BASE_URL,
     PERSIST_DIRECTORY,
@@ -17,34 +16,35 @@ from config import (
 
 
 class VectorStoreManager:
-    """ChromaDB vector store with Ollama embeddings. Persists to disk."""
+    """FAISS vector store with Ollama embeddings. Persists to disk via save_local."""
 
     def __init__(
         self,
         persist_directory: str = PERSIST_DIRECTORY,
-        collection_name: str = COLLECTION_NAME,
         embedding_model: str = EMBEDDING_MODEL,
         base_url: str = OLLAMA_BASE_URL,
     ):
         Path(persist_directory).mkdir(parents=True, exist_ok=True)
+        self.persist_directory = persist_directory
         self.embeddings = OllamaEmbeddings(
             model=embedding_model,
             base_url=base_url,
         )
-        self._vector_store = Chroma(
-            collection_name=collection_name,
-            embedding_function=self.embeddings,
-            persist_directory=persist_directory,
-        )
+        self._vector_store = None  # Set in add_documents
 
     def add_documents(self, documents: List[Document]) -> None:
-        """Add document chunks to the vector store. Persists automatically."""
-        self._vector_store.add_documents(documents)
+        """Build FAISS index from documents and save to disk."""
+        self._vector_store = FAISS.from_documents(documents, self.embeddings)
+        self._vector_store.save_local(self.persist_directory)
 
     def get_retriever(self, k: int = TOP_K):
         """Return a retriever for RAG (top-k similarity search)."""
+        if self._vector_store is None:
+            raise RuntimeError("No documents loaded. Call add_documents first.")
         return self._vector_store.as_retriever(search_kwargs={"k": k})
 
     def similarity_search(self, query: str, k: int = TOP_K) -> List[Document]:
         """Search for relevant chunks by query."""
+        if self._vector_store is None:
+            raise RuntimeError("No documents loaded. Call add_documents first.")
         return self._vector_store.similarity_search(query, k=k)

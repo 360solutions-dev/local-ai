@@ -10,10 +10,35 @@ import streamlit as st
 
 from config import OLLAMA_BASE_URL, PERSIST_DIRECTORY
 from document_loader import DocumentProcessor
+from query_history import (
+    add_message as db_add_message,
+    create_conversation as db_create_conversation,
+    delete_conversation as db_delete_conversation,
+    delete_message as db_delete_message,
+    ensure_messages_table,
+    ensure_conversations_schema,
+    get_all_messages as db_get_all_messages,
+    get_messages_for_conversation as db_get_messages_for_conversation,
+    list_conversations as db_list_conversations,
+    init_db as ensure_query_history_table,
+    log_query as log_query_to_db,
+)
 from rag_chain import answer_question
 from vector_store import VectorStoreManager
 
 st.set_page_config(page_title="Document Chatbot", page_icon="📚", layout="centered")
+
+# Hide Streamlit's "Deploy this app" footer and deploy button
+st.markdown(
+    """
+    <style>
+    .stDeployButton { display: none !important; }
+    footer { visibility: hidden !important; }
+    footer:after { content: ''; display: block; height: 0; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 st.title("📚 Offline Document Chatbot")
 st.caption("Upload documents, then ask questions. Answers are based only on your uploaded content. Runs fully offline with Ollama.")
@@ -25,6 +50,26 @@ if "retriever" not in st.session_state:
     st.session_state.retriever = None
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "current_conversation_id" not in st.session_state:
+    st.session_state.current_conversation_id = None
+
+ensure_query_history_table()
+ensure_messages_table()
+ensure_conversations_schema()
+
+# After a page refresh, repopulate: ensure we have a current conversation and load its messages
+if st.session_state.current_conversation_id is None:
+    convos = db_list_conversations()
+    if convos:
+        st.session_state.current_conversation_id = convos[0]["id"]
+        st.session_state.messages = db_get_messages_for_conversation(convos[0]["id"])
+    else:
+        new_id = db_create_conversation("Default")
+        if new_id:
+            st.session_state.current_conversation_id = new_id
+        st.session_state.messages = []
+elif not st.session_state.messages and st.session_state.current_conversation_id:
+    st.session_state.messages = db_get_messages_for_conversation(st.session_state.current_conversation_id)
 
 
 def ingest_files(file_paths: list[str]) -> None:
@@ -46,49 +91,64 @@ def ingest_files(file_paths: list[str]) -> None:
     vs.add_documents(chunks)
     st.session_state.vector_store = vs
     st.session_state.retriever = vs.get_retriever()
-    st.session_state.messages = []
+    if st.session_state.current_conversation_id:
+        st.session_state.messages = db_get_messages_for_conversation(st.session_state.current_conversation_id)
+    else:
+        st.session_state.messages = []
     st.success(f"Processed {len(chunks)} chunks from your documents. You can ask questions below.")
 
 
-# Sidebar: upload and ingest
+# Sidebar: multiple chats (scrollable list) + clear documents
 with st.sidebar:
-    st.header("Upload documents")
-    st.markdown("**Step 1:** Choose files (PDF, DOCX, or TXT)")
-    uploaded = st.file_uploader(
-        "Choose files",
-        type=["pdf", "docx", "doc", "txt"],
-        accept_multiple_files=True,
-    )
-    if uploaded:
-        st.caption(f"Selected: {len(uploaded)} file(s)")
-        st.markdown("**Step 2:** Click below to process and index them.")
-        if st.button("Process / Ingest", type="primary"):
-            with st.spinner("Loading and indexing documents…"):
-                paths = []
-                for f in uploaded:
-                    suffix = Path(f.name).suffix or ".txt"
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                        tmp.write(f.read())
-                        paths.append(tmp.name)
+    st.subheader("Chats")
+    if st.button("➕ New chat", key="new_chat", use_container_width=True):
+        new_id = db_create_conversation()
+        if new_id is not None:
+            st.session_state.current_conversation_id = new_id
+            st.session_state.messages = []
+            # Clear documents so upload section appears again for this new chat
+            st.session_state.vector_store = None
+            st.session_state.retriever = None
+            persist_path = Path(PERSIST_DIRECTORY)
+            if persist_path.exists():
                 try:
-                    ingest_files(paths)
-                except Exception as e:
-                    err = str(e).lower()
-                    if "readonly" in err or "1032" in err or "read only" in err:
-                        st.error(
-                            "**Cannot write to the document database.**\n\n"
-                            "The app has applied a fix for the second-upload issue. If you still see this, "
-                            "restart the app (stop and run `streamlit run app.py` again), then try **Process / Ingest** once more."
-                        )
-                    else:
-                        st.error(f"Error: {e}")
-                finally:
-                    for p in paths:
-                        Path(p).unlink(missing_ok=True)
-
+                    shutil.rmtree(persist_path)
+                except OSError:
+                    pass
+            st.rerun()
+    st.markdown("---")
+    convos = db_list_conversations()
+    if convos:
+        for c in convos:
+            label = c["title"] or f"Chat {c['id']}"
+            row1, row2 = st.columns([5, 1])
+            with row1:
+                if st.button(
+                    label,
+                    key=f"conv_{c['id']}",
+                    use_container_width=True,
+                    type="primary" if c["id"] == st.session_state.current_conversation_id else "secondary",
+                ):
+                    if c["id"] != st.session_state.current_conversation_id:
+                        st.session_state.current_conversation_id = c["id"]
+                        st.session_state.messages = db_get_messages_for_conversation(c["id"])
+                        st.rerun()
+            with row2:
+                if st.button("🗑", key=f"del_conv_{c['id']}", help="Remove this chat"):
+                    if db_delete_conversation(c["id"]):
+                        if st.session_state.current_conversation_id == c["id"]:
+                            remaining = [x for x in convos if x["id"] != c["id"]]
+                            st.session_state.current_conversation_id = remaining[0]["id"] if remaining else None
+                            st.session_state.messages = (
+                                db_get_messages_for_conversation(remaining[0]["id"]) if remaining else []
+                            )
+                        st.rerun()
+    else:
+        st.caption("No chats yet. Start by asking a question below.")
+    st.markdown("---")
     if st.session_state.retriever:
-        st.success("Documents are ready. Use the chat below.")
-        if st.button("Clear documents and start over"):
+        st.success("Documents are ready.")
+        if st.button("Clear documents and start over", key="sidebar_clear"):
             persist_path = Path(PERSIST_DIRECTORY)
             if persist_path.exists():
                 try:
@@ -97,32 +157,75 @@ with st.sidebar:
                     pass
             st.session_state.vector_store = None
             st.session_state.retriever = None
-            st.session_state.messages = []
             st.rerun()
-    else:
-        st.info("Upload and process documents first, then ask questions in the chat.")
 
 
-# Main area: chat
+# Main area: chat (show history from DB even when retriever is lost after refresh)
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+        if msg.get("sources"):
+            with st.expander("Sources"):
+                for s in msg["sources"]:
+                    st.caption(s)
+        if msg.get("id") is not None:
+            if st.button("Delete", key=f"del_{msg['id']}", type="secondary"):
+                db_delete_message(msg["id"])
+                if st.session_state.current_conversation_id:
+                    st.session_state.messages = db_get_messages_for_conversation(st.session_state.current_conversation_id)
+                else:
+                    st.session_state.messages = db_get_all_messages()
+                st.rerun()
+
+# Upload and Process/Ingest: show only once per chat session (when no documents are loaded)
 if not st.session_state.retriever:
-    st.info("👆 Upload and process documents in the sidebar to start asking questions.")
-    with st.expander("How to start", expanded=True):
-        st.markdown("""
-        1. **In the sidebar:** Click **Browse files** or drag and drop your PDF, DOCX, or TXT files.
-        2. After files appear, click the blue **Process / Ingest** button.
-        3. When you see "Documents are ready", the chat box will appear here — type your question and press Enter.
-        """)
+    st.markdown("---")
+    st.markdown("**Upload documents** (PDF, DOCX, TXT)")
+    uploaded = st.file_uploader(
+        "Choose files",
+        type=["pdf", "docx", "doc", "txt"],
+        accept_multiple_files=True,
+        key="main_upload",
+        label_visibility="collapsed",
+    )
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        if uploaded:
+            st.caption(f"Selected: {len(uploaded)} file(s) — then click **Process / Ingest**.")
+    with col2:
+        process_clicked = st.button("Process / Ingest", type="primary", key="main_ingest")
+    if uploaded and process_clicked:
+        with st.spinner("Loading and indexing documents…"):
+            paths = []
+            for f in uploaded:
+                suffix = Path(f.name).suffix or ".txt"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    tmp.write(f.read())
+                    paths.append(tmp.name)
+            try:
+                ingest_files(paths)
+                st.rerun()
+            except Exception as e:
+                err = str(e).lower()
+                if "readonly" in err or "1032" in err or "read only" in err:
+                    st.error(
+                        "**Cannot write to the document database.** Restart the app and try **Process / Ingest** again."
+                    )
+                else:
+                    st.error(f"Error: {e}")
+            finally:
+                for p in paths:
+                    Path(p).unlink(missing_ok=True)
+    st.info("Upload and process documents above, then the chat box will appear so you can ask questions.")
 else:
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-            if msg.get("sources"):
-                with st.expander("Sources"):
-                    for s in msg["sources"]:
-                        st.caption(s)
-
-    if prompt := st.chat_input("Ask a question about your documents"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
+    prompt = st.chat_input("Ask a question about your documents")
+    if prompt:
+        if st.session_state.current_conversation_id is None:
+            new_id = db_create_conversation()
+            if new_id:
+                st.session_state.current_conversation_id = new_id
+        user_id = db_add_message("user", prompt, conversation_id=st.session_state.current_conversation_id)
+        st.session_state.messages.append({"id": user_id, "role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
@@ -144,11 +247,16 @@ else:
                         with st.expander("Sources"):
                             for s in sources:
                                 st.caption(s)
+                    assistant_id = db_add_message(
+                        "assistant", answer, sources=sources, conversation_id=st.session_state.current_conversation_id
+                    )
                     st.session_state.messages.append({
+                        "id": assistant_id,
                         "role": "assistant",
                         "content": answer,
                         "sources": sources,
                     })
+                    log_query_to_db(prompt)
                 except Exception as e:
                     err = str(e)
                     if "connection" in err.lower() or "11434" in err:
