@@ -48,11 +48,28 @@ pip install -r requirements.txt
 ```bash
 cd /path/to/oll
 ./venv/bin/pip install -r requirements.txt
-./venv/bin/python run_migrations.py
 ./venv/bin/streamlit run app.py
 ```
 
-### 3. Run the app
+### 3. Database migrations (if using PostgreSQL)
+
+Set `DATABASE_URL` in `config.py`, then **from the project root** run all SQL files in order:
+
+```bash
+cd /path/to/oll
+source venv/bin/activate          # Windows: venv\Scripts\activate
+python run_migrations.py
+```
+
+With venv Python only:
+
+```bash
+./venv/bin/python run_migrations.py
+```
+
+This executes `migrations/001_*.sql` through `004_*.sql` in order (schema for query history, messages, conversations, and `turn_id` on messages). Run once after install and again whenever you pull new migration files.
+
+### 4. Run the app
 
 Ensure Ollama is running (start the Ollama app or run `ollama serve`). Then:
 
@@ -100,22 +117,9 @@ If `DATABASE_URL` is empty, query logging is skipped and the app runs without Po
 
 No other tables are needed. Document indexes live in FAISS (local); the LLM runs in Ollama.
 
-### Database migrations
+### Database migrations (reference)
 
-Migrations are in `migrations/`. Run them once to create the schema:
-
-**Option 1 — Python (uses `config.DATABASE_URL`):**
-```bash
-source venv/bin/activate   # or venv\Scripts\activate on Windows
-python run_migrations.py
-```
-
-**Option 2 — psql:**
-```bash
-psql "postgresql://postgres:admin@localhost:5432/llm-ops-backend" -f migrations/001_create_query_history.sql
-```
-
-**Option 3 — DB client:** Open `migrations/001_create_query_history.sql` in your PostgreSQL client and execute it against the `llm-ops-backend` database.
+Use **`python run_migrations.py`** (see [§3](#3-database-migrations-if-using-postgresql) in Setup). Files in `migrations/` are applied in lexical order; `004_add_message_turn_id.sql` adds **`turn_id`** on `messages` so one delete removes the paired user + assistant rows.
 
 ## LAN deployment
 

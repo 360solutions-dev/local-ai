@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Run SQL migrations in order. Uses DATABASE_URL from config."""
+"""Run SQL migrations in order. Uses DATABASE_URL from config.
+
+Usage (from project root):
+    python run_migrations.py
+    # or: ./venv/bin/python run_migrations.py
+
+Requires DATABASE_URL set in config.py (or env as loaded by config).
+"""
 
 from pathlib import Path
 

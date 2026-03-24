@@ -1,6 +1,7 @@
 """PostgreSQL-backed query history and chat messages (prompts + responses)."""
 
 import json
+import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -86,13 +87,23 @@ def ensure_conversations_schema() -> bool:
             cur.execute("INSERT INTO conversations (title) SELECT 'Default' WHERE NOT EXISTS (SELECT 1 FROM conversations LIMIT 1)")
             try:
                 cur.execute(
-                    "ALTER TABLE messages ADD COLUMN conversation_id INT REFERENCES conversations(id)"
+                    "ALTER TABLE messages ADD COLUMN IF NOT EXISTS conversation_id INT REFERENCES conversations(id)"
                 )
             except Exception:
                 pass
             cur.execute(
                 "UPDATE messages SET conversation_id = (SELECT id FROM conversations ORDER BY id ASC LIMIT 1) WHERE conversation_id IS NULL"
             )
+            try:
+                cur.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS turn_id UUID")
+            except Exception:
+                pass
+            try:
+                cur.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_messages_conversation_turn ON messages (conversation_id, turn_id) WHERE turn_id IS NOT NULL"
+                )
+            except Exception:
+                pass
         conn.commit()
         return True
     except Exception:
@@ -139,6 +150,46 @@ def create_conversation(title: Optional[str] = None) -> Optional[int]:
         conn.close()
 
 
+def title_from_user_message(prompt: str, max_len: int = 72) -> str:
+    """Derive a sidebar title from the first user message (ChatGPT-style)."""
+    t = " ".join((prompt or "").strip().split())
+    if not t:
+        return "New chat"
+    if len(t) > max_len:
+        return t[: max_len - 1] + "…"
+    return t
+
+
+def maybe_update_conversation_title_from_first_user_message(
+    conversation_id: int, prompt: str
+) -> bool:
+    """If this conversation has exactly one user message, set conversations.title from that prompt."""
+    conn = _get_connection()
+    if conn is None:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT COUNT(*) FROM messages
+                   WHERE conversation_id = %s AND role = 'user'""",
+                (conversation_id,),
+            )
+            (cnt,) = cur.fetchone()
+            if cnt != 1:
+                return False
+            title = title_from_user_message(prompt)
+            cur.execute(
+                "UPDATE conversations SET title = %s WHERE id = %s",
+                (title, conversation_id),
+            )
+        conn.commit()
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
 def delete_conversation(conversation_id: int) -> bool:
     """Delete a conversation and its messages. Returns True if successful."""
     conn = _get_connection()
@@ -157,24 +208,43 @@ def delete_conversation(conversation_id: int) -> bool:
 
 
 def get_messages_for_conversation(conversation_id: int) -> List[dict]:
-    """Return messages for one conversation in order. Each dict: id, role, content, sources."""
+    """Return messages for one conversation in order. Each dict: id, role, content, sources, turn_id."""
     conn = _get_connection()
     if conn is None:
         return []
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                """SELECT id, role, content, sources FROM messages
-                   WHERE conversation_id = %s ORDER BY created_at ASC""",
-                (conversation_id,),
-            )
-            rows = cur.fetchall()
-        out = []
-        for r in rows:
-            mid, role, content, sources_raw = r
-            sources = json.loads(sources_raw) if sources_raw else None
-            out.append({"id": mid, "role": role, "content": content, "sources": sources})
-        return out
+            try:
+                cur.execute(
+                    """SELECT id, role, content, sources, turn_id FROM messages
+                       WHERE conversation_id = %s ORDER BY created_at ASC""",
+                    (conversation_id,),
+                )
+                rows = cur.fetchall()
+                out = []
+                for r in rows:
+                    mid, role, content, sources_raw, turn_raw = r
+                    sources = json.loads(sources_raw) if sources_raw else None
+                    tid = str(turn_raw) if turn_raw is not None else None
+                    out.append({"id": mid, "role": role, "content": content, "sources": sources, "turn_id": tid})
+                return out
+            except Exception:
+                cur.execute(
+                    """SELECT id, role, content, sources FROM messages
+                       WHERE conversation_id = %s ORDER BY created_at ASC""",
+                    (conversation_id,),
+                )
+                rows = cur.fetchall()
+                return [
+                    {
+                        "id": r[0],
+                        "role": r[1],
+                        "content": r[2],
+                        "sources": json.loads(r[3]) if r[3] else None,
+                        "turn_id": None,
+                    }
+                    for r in rows
+                ]
     except Exception:
         return []
     finally:
@@ -188,17 +258,37 @@ def get_all_messages() -> List[dict]:
         return []
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                """SELECT id, role, content, sources FROM messages
-                   ORDER BY created_at ASC"""
-            )
-            rows = cur.fetchall()
-        out = []
-        for r in rows:
-            mid, role, content, sources_raw = r
-            sources = json.loads(sources_raw) if sources_raw else None
-            out.append({"id": mid, "role": role, "content": content, "sources": sources})
-        return out
+            try:
+                cur.execute(
+                    """SELECT id, role, content, sources, turn_id FROM messages
+                       ORDER BY created_at ASC"""
+                )
+                rows = cur.fetchall()
+                return [
+                    {
+                        "id": r[0],
+                        "role": r[1],
+                        "content": r[2],
+                        "sources": json.loads(r[3]) if r[3] else None,
+                        "turn_id": str(r[4]) if r[4] is not None else None,
+                    }
+                    for r in rows
+                ]
+            except Exception:
+                cur.execute(
+                    """SELECT id, role, content, sources FROM messages ORDER BY created_at ASC"""
+                )
+                rows = cur.fetchall()
+                return [
+                    {
+                        "id": r[0],
+                        "role": r[1],
+                        "content": r[2],
+                        "sources": json.loads(r[3]) if r[3] else None,
+                        "turn_id": None,
+                    }
+                    for r in rows
+                ]
     except Exception:
         return []
     finally:
@@ -210,30 +300,71 @@ def add_message(
     content: str,
     sources: Optional[List[str]] = None,
     conversation_id: Optional[int] = None,
-) -> Optional[int]:
-    """Insert one message. Returns the new row id, or None on failure."""
+    turn_id: Optional[str] = None,
+) -> tuple[Optional[int], Optional[str]]:
+    """Insert one message. Returns (new row id, None) or (None, error_message)."""
     conn = _get_connection()
     if conn is None:
-        return None
+        return (None, "Database connection failed. Is PostgreSQL running? Is DATABASE_URL correct in config.py?")
     try:
         sources_json = json.dumps(sources) if sources else None
+        # Pass UUID as str — psycopg2 does not adapt uuid.UUID objects unless extensions are registered
+        tid: Optional[str] = None
+        if turn_id:
+            try:
+                tid = str(uuid.UUID(turn_id))
+            except ValueError:
+                return (None, "Invalid turn_id format")
         with conn.cursor() as cur:
-            if conversation_id is not None:
-                cur.execute(
-                    """INSERT INTO messages (role, content, sources, created_at, conversation_id)
-                       VALUES (%s, %s, %s, %s, %s) RETURNING id""",
-                    (role, content.strip(), sources_json, datetime.now(timezone.utc), conversation_id),
-                )
-            else:
-                cur.execute(
-                    "INSERT INTO messages (role, content, sources, created_at) VALUES (%s, %s, %s, %s) RETURNING id",
-                    (role, content.strip(), sources_json, datetime.now(timezone.utc)),
-                )
+            try:
+                if conversation_id is not None:
+                    cur.execute(
+                        """INSERT INTO messages (role, content, sources, created_at, conversation_id, turn_id)
+                           VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+                        (
+                            role,
+                            content.strip(),
+                            sources_json,
+                            datetime.now(timezone.utc),
+                            conversation_id,
+                            tid,
+                        ),
+                    )
+                else:
+                    cur.execute(
+                        """INSERT INTO messages (role, content, sources, created_at, turn_id)
+                           VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+                        (role, content.strip(), sources_json, datetime.now(timezone.utc), tid),
+                    )
+            except Exception as e:
+                err = str(e).lower()
+                if "turn_id" in err or "column" in err:
+                    # Fallback: schema may lack turn_id (run: python run_migrations.py)
+                    if conversation_id is not None:
+                        cur.execute(
+                            """INSERT INTO messages (role, content, sources, created_at, conversation_id)
+                               VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+                            (
+                                role,
+                                content.strip(),
+                                sources_json,
+                                datetime.now(timezone.utc),
+                                conversation_id,
+                            ),
+                        )
+                    else:
+                        cur.execute(
+                            """INSERT INTO messages (role, content, sources, created_at)
+                               VALUES (%s, %s, %s, %s) RETURNING id""",
+                            (role, content.strip(), sources_json, datetime.now(timezone.utc)),
+                        )
+                else:
+                    raise
             (mid,) = cur.fetchone()
         conn.commit()
-        return mid
-    except Exception:
-        return None
+        return (mid, None)
+    except Exception as e:
+        return (None, str(e))
     finally:
         conn.close()
 
@@ -246,6 +377,27 @@ def delete_message(message_id: int) -> bool:
     try:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM messages WHERE id = %s", (message_id,))
+            deleted = cur.rowcount
+        conn.commit()
+        return deleted > 0
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+def delete_turn(conversation_id: int, turn_id: str) -> bool:
+    """Delete all messages in one Q&A turn (same turn_id). Returns True if any row removed."""
+    conn = _get_connection()
+    if conn is None:
+        return False
+    try:
+        tid_s = str(uuid.UUID(turn_id))
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM messages WHERE conversation_id = %s AND turn_id = %s",
+                (conversation_id, tid_s),
+            )
             deleted = cur.rowcount
         conn.commit()
         return deleted > 0
