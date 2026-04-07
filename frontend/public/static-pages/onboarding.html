@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<base target="_parent">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>local-ai.run — Setup</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #0a0a0f;
+  --bg-elevated: #111118;
+  --bg-card: #16161f;
+  --bg-card-hover: #1c1c28;
+  --border: #23233a;
+  --border-accent: #2d4a3e;
+  --border-focus: #34d399;
+  --text: #e8e8ef;
+  --text-muted: #7a7a8f;
+  --text-dim: #50506a;
+  --accent: #34d399;
+  --accent-glow: rgba(52, 211, 153, 0.15);
+  --accent-glow-strong: rgba(52, 211, 153, 0.3);
+  --accent-secondary: #22d3ee;
+  --accent-warm: #f59e0b;
+  --danger: #ef4444;
+  --font-body: 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* Ambient glow */
+.ambient {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 800px; height: 800px;
+  background: radial-gradient(ellipse, var(--accent-glow) 0%, transparent 65%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Onboarding Container ── */
+.onboarding {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 480px;
+  padding: 2rem;
+}
+
+.step { display: none; animation: fadeIn 0.4s ease; }
+.step.active { display: block; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Logo ── */
+.setup-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  color: var(--accent);
+  margin-bottom: 2.5rem;
+  letter-spacing: 0.05em;
+}
+
+.setup-logo svg { width: 28px; height: 28px; }
+
+.logo-dash {
+  font-weight: 400;
+  color: var(--text-dim);
+  animation: cursorBlink 1.2s step-end infinite;
+}
+
+@keyframes cursorBlink {
+  0%, 100% { color: var(--text-dim); }
+  50% { color: #e8e8ef; }
+}
+
+/* ── Step indicator ── */
+.step-indicator {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+.step-dot {
+  width: 32px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--border);
+  transition: all 0.3s;
+}
+
+.step-dot.done { background: var(--accent); }
+.step-dot.current { background: var(--accent); width: 48px; }
+
+/* ── Typography ── */
+.setup-title {
+  font-size: 1.8rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.6rem;
+  line-height: 1.2;
+}
+
+.setup-title .highlight {
+  background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.setup-desc {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  font-weight: 300;
+  line-height: 1.6;
+  margin-bottom: 2rem;
+}
+
+/* ── Form ── */
+.form-group {
+  margin-bottom: 1.2rem;
+}
+
+.form-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-input::placeholder { color: var(--text-dim); }
+
+.form-input:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.form-hint {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin-top: 0.35rem;
+}
+
+.password-wrapper {
+  position: relative;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  transition: color 0.2s;
+}
+
+.password-toggle:hover { color: var(--accent); }
+
+/* ── Buttons ── */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.85rem 2rem;
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  border-radius: 8px;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 0 30px var(--accent-glow-strong);
+  margin-top: 0.5rem;
+}
+
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 0 50px var(--accent-glow-strong); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* ── Welcome Extras ── */
+.welcome-features {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin-bottom: 2rem;
+}
+
+.welcome-feature {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  font-weight: 300;
+}
+
+.welcome-feature-icon {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  background: var(--accent-glow);
+  border: 1px solid var(--border-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+/* ── Success Screen ── */
+.success-icon {
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  background: var(--accent-glow);
+  border: 2px solid var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  margin-bottom: 1.5rem;
+  animation: scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.success-checklist {
+  margin-bottom: 2rem;
+}
+
+.success-check {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.success-check-icon {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+/* ── Terminal in welcome ── */
+.mini-terminal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.8rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin-bottom: 2rem;
+  line-height: 1.6;
+}
+
+.mini-terminal .prompt { color: var(--accent); }
+.mini-terminal .success { color: var(--accent); }
+
+/* ── Loading animation ── */
+.loading-spinner {
+  display: none;
+  width: 18px; height: 18px;
+  border: 2px solid var(--bg);
+  border-top: 2px solid transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 520px) {
+  .onboarding { padding: 1.5rem; }
+  .setup-title { font-size: 1.5rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="ambient"></div>
+
+<div class="onboarding">
+
+  <!-- ═══════ STEP 1: WELCOME ═══════ -->
+  <div class="step active" id="step-1">
+    <div class="setup-logo">
+      <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M14 2.5L4 7v7c0 6.1 4.3 11.5 10 13 5.7-1.5 10-6.9 10-13V7L14 2.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        <circle cx="14" cy="11" r="2" fill="currentColor"/>
+        <circle cx="9" cy="17" r="1.3" fill="currentColor"/>
+        <circle cx="19" cy="17" r="1.3" fill="currentColor"/>
+        <circle cx="14" cy="21" r="1.3" fill="currentColor"/>
+        <path d="M14 13v2.5l-4 2M14 15.5l4 2M9 17l5 4M19 17l-5 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span style="color:var(--accent)">local</span><span class="logo-dash">-</span><span style="color:var(--accent)">ai</span><span style="color:var(--text-dim)">.run</span>
+    </div>
+
+    <div class="step-indicator">
+      <div class="step-dot current"></div>
+      <div class="step-dot"></div>
+      <div class="step-dot"></div>
+    </div>
+
+    <h1 class="setup-title">Welcome to<br><span class="highlight">local-ai.run</span></h1>
+    <p class="setup-desc">Let's get your private AI platform set up. This will only take a minute.</p>
+
+    <div class="welcome-features">
+      <div class="welcome-feature">
+        <div class="welcome-feature-icon">🔒</div>
+        Everything runs on your hardware
+      </div>
+      <div class="welcome-feature">
+        <div class="welcome-feature-icon">🧠</div>
+        Bring your own models — Ollama, vLLM, LM Studio
+      </div>
+      <div class="welcome-feature">
+        <div class="welcome-feature-icon">📁</div>
+        Chat with files, generate audio, and more
+      </div>
+    </div>
+
+    <div class="mini-terminal">
+      <span class="prompt">$</span> docker compose up -d<br>
+      <span class="success">✔ All services running</span>
+    </div>
+
+    <button class="btn-primary" onclick="goToStep(2)">
+      Let's get started →
+    </button>
+  </div>
+
+  <!-- ═══════ STEP 2: CREATE ADMIN ═══════ -->
+  <div class="step" id="step-2">
+    <div class="setup-logo">
+      <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M14 2.5L4 7v7c0 6.1 4.3 11.5 10 13 5.7-1.5 10-6.9 10-13V7L14 2.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        <circle cx="14" cy="11" r="2" fill="currentColor"/>
+        <circle cx="9" cy="17" r="1.3" fill="currentColor"/>
+        <circle cx="19" cy="17" r="1.3" fill="currentColor"/>
+        <circle cx="14" cy="21" r="1.3" fill="currentColor"/>
+        <path d="M14 13v2.5l-4 2M14 15.5l4 2M9 17l5 4M19 17l-5 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span style="color:var(--accent)">local</span><span class="logo-dash">-</span><span style="color:var(--accent)">ai</span><span style="color:var(--text-dim)">.run</span>
+    </div>
+
+    <div class="step-indicator">
+      <div class="step-dot done"></div>
+      <div class="step-dot current"></div>
+      <div class="step-dot"></div>
+    </div>
+
+    <h1 class="setup-title">Create your<br><span class="highlight">admin account</span></h1>
+    <p class="setup-desc">This will be the primary administrator for your local-ai instance.</p>
+
+    <form id="admin-form" onsubmit="return handleAdminSubmit(event)">
+      <div class="form-group">
+        <label class="form-label" for="display-name">Display Name</label>
+        <input class="form-input" type="text" id="display-name" placeholder="e.g. Ahmad" required autocomplete="name">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="email">Email</label>
+        <input class="form-input" type="email" id="email" placeholder="admin@yourcompany.com" required autocomplete="email">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        <div class="password-wrapper">
+          <input class="form-input" type="password" id="password" placeholder="Min 8 characters" required minlength="8" autocomplete="new-password">
+          <button type="button" class="password-toggle" onclick="togglePassword()">show</button>
+        </div>
+        <div class="form-hint">At least 8 characters with a mix of letters and numbers.</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="confirm-password">Confirm Password</label>
+        <input class="form-input" type="password" id="confirm-password" placeholder="Re-enter password" required autocomplete="new-password">
+      </div>
+
+      <button class="btn-primary" type="submit" id="create-btn">
+        <span id="btn-text">Create Admin Account</span>
+        <div class="loading-spinner" id="btn-spinner"></div>
+      </button>
+    </form>
+  </div>
+
+  <!-- ═══════ STEP 3: SUCCESS ═══════ -->
+  <div class="step" id="step-3">
+    <div class="setup-logo">
+      <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M14 2.5L4 7v7c0 6.1 4.3 11.5 10 13 5.7-1.5 10-6.9 10-13V7L14 2.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        <circle cx="14" cy="11" r="2" fill="currentColor"/>
+        <circle cx="9" cy="17" r="1.3" fill="currentColor"/>
+        <circle cx="19" cy="17" r="1.3" fill="currentColor"/>
+        <circle cx="14" cy="21" r="1.3" fill="currentColor"/>
+        <path d="M14 13v2.5l-4 2M14 15.5l4 2M9 17l5 4M19 17l-5 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span style="color:var(--accent)">local</span><span class="logo-dash">-</span><span style="color:var(--accent)">ai</span><span style="color:var(--text-dim)">.run</span>
+    </div>
+
+    <div class="step-indicator">
+      <div class="step-dot done"></div>
+      <div class="step-dot done"></div>
+      <div class="step-dot done"></div>
+    </div>
+
+    <div class="success-icon">✓</div>
+
+    <h1 class="setup-title">You're all set!</h1>
+    <p class="setup-desc">Your local-ai instance is ready to use. Here's what's been configured:</p>
+
+    <div class="success-checklist">
+      <div class="success-check">
+        <span class="success-check-icon">✔</span>
+        Admin account created
+      </div>
+      <div class="success-check">
+        <span class="success-check-icon">✔</span>
+        API gateway configured
+      </div>
+      <div class="success-check">
+        <span class="success-check-icon">✔</span>
+        Vector store initialized
+      </div>
+      <div class="success-check">
+        <span class="success-check-icon">✔</span>
+        File storage ready
+      </div>
+    </div>
+
+    <button class="btn-primary" onclick="window.location.href='/dashboard'">
+      Go to Dashboard →
+    </button>
+  </div>
+
+</div>
+
+<script>
+function goToStep(n) {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById('step-' + n).classList.add('active');
+}
+
+function togglePassword() {
+  const pw = document.getElementById('password');
+  const btn = document.querySelector('.password-toggle');
+  if (pw.type === 'password') {
+    pw.type = 'text';
+    btn.textContent = 'hide';
+  } else {
+    pw.type = 'password';
+    btn.textContent = 'show';
+  }
+}
+
+function handleAdminSubmit(e) {
+  e.preventDefault();
+  const pw = document.getElementById('password').value;
+  const cpw = document.getElementById('confirm-password').value;
+  if (pw !== cpw) {
+    alert('Passwords do not match.');
+    return false;
+  }
+  // Simulate loading
+  document.getElementById('btn-text').textContent = 'Creating...';
+  document.getElementById('btn-spinner').style.display = 'inline-block';
+  document.getElementById('create-btn').disabled = true;
+  setTimeout(() => goToStep(3), 1500);
+  return false;
+}
+</script>
+</body>
+</html>

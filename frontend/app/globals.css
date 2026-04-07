@@ -1,0 +1,93 @@
+@import 'tailwindcss';
+
+/* Dark theme (default) */
+:root {
+  --color-bg: #0a0a0f;
+  --color-bg-elevated: #111118;
+  --color-bg-card: #16161f;
+  --color-bg-card-hover: #1c1c28;
+  --color-border: #23233a;
+  --color-border-accent: #2d4a3e;
+  --color-border-focus: #34d399;
+  --color-text: #e8e8ef;
+  --color-text-muted: #7a7a8f;
+  --color-text-dim: #50506a;
+  --color-accent: #34d399;
+  --color-accent-secondary: #22d3ee;
+  --color-accent-warm: #f59e0b;
+  --color-danger: #ef4444;
+}
+
+/* Light theme overrides */
+html.light {
+  --color-bg: #f5f5f7;
+  --color-bg-elevated: #ffffff;
+  --color-bg-card: #eeeef0;
+  --color-bg-card-hover: #e4e4e8;
+  --color-border: #d1d1d6;
+  --color-border-accent: #a7d7c5;
+  --color-border-focus: #22b07d;
+  --color-text: #1a1a2e;
+  --color-text-muted: #5a5a72;
+  --color-text-dim: #8a8aa0;
+  --color-accent: #22b07d;
+  --color-accent-secondary: #1aa8c9;
+  --color-accent-warm: #d97b06;
+  --color-danger: #dc3545;
+}
+
+/* Tell Tailwind to use the CSS variables */
+@theme {
+  --color-bg: var(--color-bg);
+  --color-bg-elevated: var(--color-bg-elevated);
+  --color-bg-card: var(--color-bg-card);
+  --color-bg-card-hover: var(--color-bg-card-hover);
+  --color-border: var(--color-border);
+  --color-border-accent: var(--color-border-accent);
+  --color-border-focus: var(--color-border-focus);
+  --color-text: var(--color-text);
+  --color-text-muted: var(--color-text-muted);
+  --color-text-dim: var(--color-text-dim);
+  --color-accent: var(--color-accent);
+  --color-accent-secondary: var(--color-accent-secondary);
+  --color-accent-warm: var(--color-accent-warm);
+  --color-danger: var(--color-danger);
+
+  --font-body: 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* Custom keyframes used across pages */
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes shakeIn {
+  0% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(2px); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cursorBlink {
+  0%, 100% { color: var(--color-text-dim); }
+  50% { color: var(--color-text); }
+}
