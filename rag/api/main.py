@@ -235,23 +235,24 @@ def ask_question(req: AskRequest):
 
 
 # ---------------------------------------------------------------------------
-# File metadata storage (JSON file on disk)
+# File metadata storage (PostgreSQL)
 # ---------------------------------------------------------------------------
 
-FILES_META_PATH = ROOT / "indexed_files.json"
+from query_history import (
+    add_indexed_file,
+    delete_indexed_file,
+    ensure_indexed_files_table,
+    list_indexed_files,
+)
+
+_files_table_ready = False
 
 
-def _load_files_meta() -> list:
-    if FILES_META_PATH.exists():
-        try:
-            return json.loads(FILES_META_PATH.read_text())
-        except (json.JSONDecodeError, OSError):
-            return []
-    return []
-
-
-def _save_files_meta(files: list):
-    FILES_META_PATH.write_text(json.dumps(files, indent=2))
+def _ensure_files_table():
+    global _files_table_ready
+    if not _files_table_ready:
+        _files_table_ready = ensure_indexed_files_table()
+    return _files_table_ready
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +313,8 @@ async def upload_file(file: UploadFile = File(...)):
             new_vs = FAISS.from_documents(chunks, embeddings)
             new_vs.save_local(str(store_path))
 
-        # Save file metadata
+        # Save file metadata to database
+        _ensure_files_table()
         file_id = uuid.uuid4().hex[:12]
         file_meta = {
             "id": file_id,
@@ -321,9 +323,8 @@ async def upload_file(file: UploadFile = File(...)):
             "chunks": len(chunks),
             "type": suffix,
         }
-        files = _load_files_meta()
-        files.append(file_meta)
-        _save_files_meta(files)
+        if not add_indexed_file(file_id, file.filename, file_size, len(chunks), suffix):
+            return {"error": "Failed to save file metadata to database."}
 
         return {"file": file_meta}
 
@@ -336,16 +337,15 @@ async def upload_file(file: UploadFile = File(...)):
 @app.get("/api/files")
 def list_files():
     """List all indexed files."""
-    files = _load_files_meta()
+    _ensure_files_table()
+    files = list_indexed_files()
     return {"files": files}
 
 
 @app.delete("/api/files/{file_id}")
 def delete_file(file_id: str):
-    """Remove a file from the metadata list."""
-    files = _load_files_meta()
-    new_files = [f for f in files if f.get("id") != file_id]
-    if len(new_files) == len(files):
+    """Remove a file from the metadata."""
+    _ensure_files_table()
+    if not delete_indexed_file(file_id):
         return {"error": "File not found."}
-    _save_files_meta(new_files)
     return {"message": "File removed."}

@@ -424,3 +424,90 @@ def log_query(query_text: str) -> bool:
         return False
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Indexed files metadata (stored in PostgreSQL)
+# ---------------------------------------------------------------------------
+
+def ensure_indexed_files_table() -> bool:
+    """Create indexed_files table if it does not exist."""
+    conn = _get_connection()
+    if conn is None:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS indexed_files (
+                    id VARCHAR(12) PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    size INTEGER NOT NULL,
+                    chunks INTEGER NOT NULL,
+                    type VARCHAR(10) NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+        conn.commit()
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+def list_indexed_files() -> List[dict]:
+    """Return all indexed files, newest first."""
+    conn = _get_connection()
+    if conn is None:
+        return []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, name, size, chunks, type FROM indexed_files ORDER BY created_at DESC"
+            )
+            return [
+                {"id": r[0], "name": r[1], "size": r[2], "chunks": r[3], "type": r[4]}
+                for r in cur.fetchall()
+            ]
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
+
+def add_indexed_file(file_id: str, name: str, size: int, chunks: int, file_type: str) -> bool:
+    """Insert a new indexed file record."""
+    conn = _get_connection()
+    if conn is None:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO indexed_files (id, name, size, chunks, type) VALUES (%s, %s, %s, %s, %s)",
+                (file_id, name, size, chunks, file_type),
+            )
+        conn.commit()
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+def delete_indexed_file(file_id: str) -> bool:
+    """Delete an indexed file record. Returns True if deleted."""
+    conn = _get_connection()
+    if conn is None:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM indexed_files WHERE id = %s", (file_id,))
+            deleted = cur.rowcount
+        conn.commit()
+        return deleted > 0
+    except Exception:
+        return False
+    finally:
+        conn.close()

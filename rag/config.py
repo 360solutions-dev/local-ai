@@ -14,6 +14,5 @@ CHUNK_OVERLAP = 200
 TOP_K = 4
 PERSIST_DIRECTORY = "./vector_db"
 
-# PostgreSQL: query history (set DATABASE_URL or leave empty to disable logging)
-# On macOS/Homebrew PostgreSQL the default role is usually your Mac username, not "postgres"
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://muhammad:admin@localhost:5432/llm-ops-backend")
+# PostgreSQL (set DATABASE_URL or leave empty to disable logging)
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
