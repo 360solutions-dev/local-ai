@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Sidebar from "@/components/layout/Sidebar";
 import { useTranslation } from "@/lib/i18n";
+import { useConversations, useIndexedFiles, useOllamaModels, useSystemHealth } from "@/hooks/use-chat";
 
 function StatCard({ label, value, change, valueClass, changeClass }: { label: string; value: string; change: string; valueClass?: string; changeClass?: string }) {
   return (
@@ -54,6 +55,51 @@ function FeatureCard({ href, icon, title, desc, tag, active, comingSoonLabel, ac
 export default function DashboardClient() {
   const { t } = useTranslation();
 
+  const { data: conversations, isLoading: loadingChats } = useConversations();
+  const { data: files, isLoading: loadingFiles } = useIndexedFiles();
+  const { data: models, isLoading: loadingModels } = useOllamaModels();
+  const { data: health, isLoading: loadingHealth } = useSystemHealth();
+
+  const totalChats = conversations?.length ?? 0;
+  const totalFiles = files?.length ?? 0;
+  const totalModels = models?.length ?? 0;
+
+  const modelDisplay = loadingModels
+    ? "..."
+    : totalModels > 0
+      ? models![0].name
+      : t("dashboard.notConfigured");
+
+  const modelChange = loadingModels
+    ? "..."
+    : totalModels > 0
+      ? `${totalModels} model${totalModels !== 1 ? "s" : ""} installed`
+      : t("dashboard.setupRequired");
+
+  const healthStatus = loadingHealth
+    ? "..."
+    : health?.ollama && health?.database
+      ? t("dashboard.online")
+      : health?.ollama || health?.database
+        ? "Degraded"
+        : "Offline";
+
+  const healthChange = loadingHealth
+    ? "..."
+    : health?.ollama && health?.database
+      ? t("dashboard.allHealthy")
+      : !health?.ollama && !health?.database
+        ? "Ollama & DB unreachable"
+        : !health?.ollama
+          ? "Ollama unreachable"
+          : "Database unreachable";
+
+  const healthValueClass = loadingHealth
+    ? ""
+    : health?.ollama && health?.database
+      ? "text-accent"
+      : "text-accent-warm";
+
   return (
     <div className="font-body bg-bg text-text min-h-screen relative">
       {/* Noise overlay */}
@@ -69,10 +115,29 @@ export default function DashboardClient() {
           </div>
 
           <div className="grid grid-cols-4 gap-4 mb-10 max-[900px]:grid-cols-2">
-            <StatCard label={t("dashboard.totalChats")} value="0" change={t("dashboard.newInstance")} />
-            <StatCard label={t("dashboard.filesIndexed")} value="0" change={t("dashboard.uploadFiles")} />
-            <StatCard label={t("dashboard.modelEngine")} value={t("dashboard.notConfigured")} valueClass="text-accent text-[1.1rem]" change={t("dashboard.setupRequired")} changeClass="text-accent-warm!" />
-            <StatCard label={t("dashboard.systemStatus")} value={t("dashboard.online")} valueClass="text-accent" change={t("dashboard.allHealthy")} />
+            <StatCard
+              label={t("dashboard.totalChats")}
+              value={loadingChats ? "..." : String(totalChats)}
+              change={totalChats === 0 ? t("dashboard.newInstance") : `${totalChats} conversation${totalChats !== 1 ? "s" : ""}`}
+            />
+            <StatCard
+              label={t("dashboard.filesIndexed")}
+              value={loadingFiles ? "..." : String(totalFiles)}
+              change={totalFiles === 0 ? t("dashboard.uploadFiles") : `${totalFiles} file${totalFiles !== 1 ? "s" : ""} indexed`}
+            />
+            <StatCard
+              label={t("dashboard.modelEngine")}
+              value={modelDisplay}
+              valueClass={totalModels > 0 ? "" : "text-accent text-[1.1rem]"}
+              change={modelChange}
+              changeClass={totalModels > 0 ? "" : "text-accent-warm!"}
+            />
+            <StatCard
+              label={t("dashboard.systemStatus")}
+              value={healthStatus}
+              valueClass={healthValueClass}
+              change={healthChange}
+            />
           </div>
 
           <div className="font-mono text-[0.75rem] text-text-dim tracking-widest uppercase mb-4">{t("dashboard.aiTools")}</div>

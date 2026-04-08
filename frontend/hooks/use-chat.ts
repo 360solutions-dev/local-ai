@@ -184,6 +184,50 @@ export function useDeleteMessage() {
 }
 
 // ---------------------------------------------------------------------------
+// System health hook
+// ---------------------------------------------------------------------------
+
+export interface SystemHealth {
+  status: string;
+  ollama: boolean;
+  database: boolean;
+}
+
+export function useSystemHealth() {
+  return useQuery({
+    queryKey: ["system", "health"],
+    queryFn: async () => {
+      const res = await apiGet<SystemHealth>("/api/rag/health");
+      if (!res.ok) return { status: "offline", ollama: false, database: false } as SystemHealth;
+      return res.data;
+    },
+    refetchInterval: 30_000,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Provider connection test hook
+// ---------------------------------------------------------------------------
+
+export interface ProviderTestResult {
+  connected: boolean;
+  latency_ms?: number;
+  error?: string;
+}
+
+export function useTestProvider() {
+  return useMutation({
+    mutationFn: async ({ endpoint, type }: { endpoint: string; type?: "ollama" | "openai" }) => {
+      const res = await apiPost<ProviderTestResult>("/api/system/providers/test/", { endpoint, type });
+      if (!res.ok) {
+        throw new Error("Failed to test provider connection.");
+      }
+      return res.data;
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Model hooks
 // ---------------------------------------------------------------------------
 

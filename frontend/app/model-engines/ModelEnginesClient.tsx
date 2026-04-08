@@ -1,29 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useTranslation } from "@/lib/i18n";
-import { useOllamaModels, useDeleteModel } from "@/hooks/use-chat";
+import { useOllamaModels, useDeleteModel, useSystemHealth, useTestProvider } from "@/hooks/use-chat";
 import { useDownload } from "@/lib/download-provider";
 
-interface Provider {
+interface ProviderDef {
   name: string;
   icon: string;
   desc: string;
-  connected: boolean;
+  endpoint: string;
+  type: "ollama" | "openai";
   isDefault?: boolean;
   meta: { label: string; value: string; accent?: boolean }[];
 }
 
-const connectedProviders: Provider[] = [
+const PROVIDER_DEFS: ProviderDef[] = [
   {
     name: "Ollama",
     icon: "\uD83E\uDD99",
     desc: "Local model runner. Pull and manage models with simple commands. GPU and CPU support.",
-    connected: true,
+    endpoint: "http://localhost:11434",
+    type: "ollama",
     isDefault: true,
     meta: [
       { label: "Endpoint", value: "localhost:11434" },
-      { label: "Models", value: "connected" },
+      { label: "Models", value: "—" },
       { label: "GPU", value: "Active", accent: true },
     ],
   },
@@ -31,7 +33,8 @@ const connectedProviders: Provider[] = [
     name: "LM Studio",
     icon: "\uD83D\uDDA5\uFE0F",
     desc: "GUI-based model manager with an OpenAI-compatible server. Great for experimentation.",
-    connected: true,
+    endpoint: "http://localhost:1234",
+    type: "openai",
     meta: [
       { label: "Endpoint", value: "localhost:1234" },
       { label: "Models", value: "Via LM Studio UI" },
@@ -40,12 +43,13 @@ const connectedProviders: Provider[] = [
   },
 ];
 
-const availableProviders: Provider[] = [
+const AVAILABLE_PROVIDERS: ProviderDef[] = [
   {
     name: "vLLM",
     icon: "\u26A1",
     desc: "High-throughput serving with PagedAttention. Best for multi-user setups with high concurrency.",
-    connected: false,
+    endpoint: "http://localhost:8000",
+    type: "openai",
     meta: [
       { label: "Default Port", value: "8000" },
       { label: "GPU Required", value: "Yes" },
@@ -55,7 +59,8 @@ const availableProviders: Provider[] = [
     name: "llama.cpp",
     icon: "\uD83D\uDD27",
     desc: "Lightweight C++ inference. Runs on CPU, Apple Silicon, and CUDA with minimal overhead.",
-    connected: false,
+    endpoint: "http://localhost:8080",
+    type: "openai",
     meta: [
       { label: "Default Port", value: "8080" },
       { label: "GPU Required", value: "No" },
@@ -65,7 +70,8 @@ const availableProviders: Provider[] = [
     name: "Custom Endpoint",
     icon: "\uD83C\uDF10",
     desc: "Connect any OpenAI-compatible API server. Use your own inference setup with a custom URL.",
-    connected: false,
+    endpoint: "",
+    type: "openai",
     meta: [{ label: "Protocol", value: "/v1/chat/completions" }],
   },
 ];
@@ -76,7 +82,7 @@ export default function ModelEnginesClient() {
   const [showPullModal, setShowPullModal] = useState(false);
   const [pullInput, setPullInput] = useState("");
   const [toast, setToast] = useState<string | null>(null);
-  const [testResults, setTestResults] = useState<Record<string, { status: string; latency?: string }>>({});
+  const [testResults, setTestResults] = useState<Record<string, { status: string; latency?: string; error?: string }>>({});
 
   const [chatModel, setChatModel] = useState("llama3.1:8b (Ollama)");
   const [embeddingModel, setEmbeddingModel] = useState("nomic-embed-text (Ollama)");
@@ -84,22 +90,57 @@ export default function ModelEnginesClient() {
 
   // Real API hooks
   const { data: ollamaModels = [], isLoading: modelsLoading } = useOllamaModels();
+  const { data: health } = useSystemHealth();
   const deleteModelMutation = useDeleteModel();
+  const testProviderMutation = useTestProvider();
   const { download, isPulling, startPull } = useDownload();
+
+  // Build connected providers with real status
+  const connectedProviders = useMemo(() => {
+    return PROVIDER_DEFS.map((p) => {
+      const isOllama = p.name === "Ollama";
+      const connected = isOllama ? (health?.ollama ?? false) : false;
+      const meta = p.meta.map((m) => {
+        if (isOllama && m.label === "Models") {
+          return { ...m, value: `${ollamaModels.length} installed`, accent: ollamaModels.length > 0 };
+        }
+        return m;
+      });
+      return { ...p, connected, meta };
+    });
+  }, [health, ollamaModels]);
 
   function showToastMsg(msg: string) {
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
   }
 
-  function testConnection(providerName: string) {
-    setTestResults((prev) => ({ ...prev, [providerName]: { status: "loading" } }));
-    setTimeout(() => {
-      setTestResults((prev) => ({
-        ...prev,
-        [providerName]: { status: "success", latency: "12ms" },
-      }));
-    }, 1200);
+  function testConnection(provider: ProviderDef) {
+    setTestResults((prev) => ({ ...prev, [provider.name]: { status: "loading" } }));
+    testProviderMutation.mutate(
+      { endpoint: provider.endpoint, type: provider.type },
+      {
+        onSuccess: (data) => {
+          if (data.connected) {
+            setTestResults((prev) => ({
+              ...prev,
+              [provider.name]: { status: "success", latency: `${data.latency_ms}ms` },
+            }));
+          } else {
+            setTestResults((prev) => ({
+              ...prev,
+              [provider.name]: { status: "error", error: data.error || "Connection failed" },
+            }));
+          }
+        },
+        onError: () => {
+          setTestResults((prev) => ({
+            ...prev,
+            [provider.name]: { status: "error", error: "Request failed" },
+          }));
+        },
+      },
+    );
   }
 
   function handlePullModel() {
@@ -178,13 +219,17 @@ export default function ModelEnginesClient() {
                 </div>
                 <span className="text-[1.05rem] font-semibold">{p.name}</span>
               </div>
-              {p.isDefault ? (
+              {p.isDefault && p.connected ? (
                 <span className="font-mono text-[0.68rem] px-2 py-0.5 rounded bg-accent text-bg font-semibold">
                   {t("common.default")}
                 </span>
-              ) : (
+              ) : p.connected ? (
                 <span className="font-mono text-[0.68rem] px-2 py-0.5 rounded text-accent bg-accent/15">
                   {t("common.connected")}
+                </span>
+              ) : (
+                <span className="font-mono text-[0.68rem] px-2 py-0.5 rounded text-text-dim bg-bg border border-border">
+                  {t("common.notConnected")}
                 </span>
               )}
             </div>
@@ -205,8 +250,9 @@ export default function ModelEnginesClient() {
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => testConnection(p.name)}
-                className="inline-flex items-center gap-2 px-3 py-1.5 bg-transparent text-text-muted border border-border rounded-md font-body text-[0.82rem] font-medium cursor-pointer transition-all hover:border-text-muted hover:text-text"
+                onClick={() => testConnection(p)}
+                disabled={testProviderMutation.isPending}
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-transparent text-text-muted border border-border rounded-md font-body text-[0.82rem] font-medium cursor-pointer transition-all hover:border-text-muted hover:text-text disabled:opacity-50"
               >
                 {t("modelEngines.testConnection")}
               </button>
@@ -234,7 +280,9 @@ export default function ModelEnginesClient() {
                 <span className="flex-1 font-mono text-[0.8rem] text-text-muted">
                   {testResults[p.name].status === "loading"
                     ? t("modelEngines.testingConnection")
-                    : t("modelEngines.connectionSuccessful")}
+                    : testResults[p.name].status === "success"
+                    ? t("modelEngines.connectionSuccessful")
+                    : testResults[p.name].error || "Connection failed"}
                 </span>
                 {testResults[p.name].latency && (
                   <span className="font-mono text-[0.75rem] text-accent">
@@ -252,7 +300,7 @@ export default function ModelEnginesClient() {
         {t("modelEngines.availableProviders")}
       </div>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
-        {availableProviders.map((p) => (
+        {AVAILABLE_PROVIDERS.map((p) => (
           <div
             key={p.name}
             className="bg-bg-card border border-border rounded-[14px] p-6 relative overflow-hidden transition-all hover:border-border-accent"

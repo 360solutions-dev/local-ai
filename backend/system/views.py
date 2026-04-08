@@ -1,8 +1,11 @@
 import io
 import json
+import time
 import zipfile
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
+import requests as http_requests
 from django.conf import settings
 from django.http import HttpResponse
 from rest_framework import status
@@ -245,6 +248,75 @@ class DeleteAllDataView(APIView):
         instance.save()
 
         return Response({"message": "All data deleted."})
+
+
+class ProviderTestView(APIView):
+    """Test connectivity to a model provider endpoint."""
+
+    permission_classes = [IsAuthenticated]
+
+    # Allowed URL schemes and private-network hosts only (prevent SSRF to external targets)
+    _ALLOWED_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+    # Map well-known localhost ports to Docker service hostnames so the backend
+    # container can reach sibling services on the Docker network.
+    _DOCKER_HOST_MAP = {
+        ("localhost", 11434): "ollama",
+        ("127.0.0.1", 11434): "ollama",
+    }
+
+    def _resolve_endpoint(self, endpoint: str) -> str:
+        """Translate localhost endpoints to Docker-internal hostnames."""
+        parsed = urlparse(endpoint)
+        hostname = parsed.hostname or ""
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        docker_host = self._DOCKER_HOST_MAP.get((hostname, port))
+        if docker_host:
+            return f"{parsed.scheme}://{docker_host}:{port}"
+        return endpoint
+
+    def post(self, request):
+        endpoint = (request.data.get("endpoint") or "").strip().rstrip("/")
+        provider_type = request.data.get("type", "ollama")  # "ollama" or "openai"
+
+        if not endpoint:
+            return Response(
+                {"error": {"code": "VALIDATION_ERROR", "message": "Endpoint is required."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Basic SSRF protection: only allow localhost / docker-internal hosts
+        parsed = urlparse(endpoint)
+        hostname = parsed.hostname or ""
+        if hostname not in self._ALLOWED_HOSTS and not hostname.endswith(".local"):
+            return Response(
+                {"error": {"code": "VALIDATION_ERROR", "message": "Only local endpoints are allowed."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Resolve to Docker-internal hostname if running inside Docker
+        resolved = self._resolve_endpoint(endpoint)
+
+        # Choose the health-check path based on provider type
+        if provider_type == "openai":
+            test_url = f"{resolved}/v1/models"
+        else:
+            test_url = f"{resolved}/api/tags"
+
+        try:
+            start = time.monotonic()
+            resp = http_requests.get(test_url, timeout=5)
+            latency_ms = round((time.monotonic() - start) * 1000)
+            resp.raise_for_status()
+            return Response({"connected": True, "latency_ms": latency_ms})
+        except http_requests.ConnectionError:
+            return Response({"connected": False, "error": "Connection refused"})
+        except http_requests.Timeout:
+            return Response({"connected": False, "error": "Connection timed out"})
+        except http_requests.HTTPError as e:
+            return Response({"connected": False, "error": f"HTTP {e.response.status_code}"})
+        except Exception as e:
+            return Response({"connected": False, "error": str(e)})
 
 
 class FactoryResetView(APIView):

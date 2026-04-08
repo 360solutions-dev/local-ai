@@ -11,4 +11,5 @@ urlpatterns = [
     path("danger/reset-instance/", views.ResetInstanceView.as_view(), name="danger-reset"),
     path("danger/delete-all-data/", views.DeleteAllDataView.as_view(), name="danger-delete"),
     path("danger/factory-reset/", views.FactoryResetView.as_view(), name="danger-factory-reset"),
+    path("providers/test/", views.ProviderTestView.as_view(), name="provider-test"),
 ]
