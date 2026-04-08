@@ -1,0 +1,56 @@
+from django.urls import path
+
+from . import views
+
+urlpatterns = [
+    path(
+        "conversations/",
+        views.ConversationListCreateView.as_view(),
+        name="chat-conversations",
+    ),
+    path(
+        "conversations/<int:conversation_id>/",
+        views.ConversationDeleteView.as_view(),
+        name="chat-conversation-delete",
+    ),
+    path(
+        "conversations/<int:conversation_id>/messages/",
+        views.ConversationMessagesView.as_view(),
+        name="chat-conversation-messages",
+    ),
+    path(
+        "messages/<int:message_id>/",
+        views.MessageDeleteView.as_view(),
+        name="chat-message-delete",
+    ),
+    path(
+        "models/",
+        views.ModelListView.as_view(),
+        name="chat-models",
+    ),
+    path(
+        "models/pull/",
+        views.ModelPullView.as_view(),
+        name="chat-model-pull",
+    ),
+    path(
+        "models/<path:model_name>/",
+        views.ModelDeleteView.as_view(),
+        name="chat-model-delete",
+    ),
+    path(
+        "files/",
+        views.FileListView.as_view(),
+        name="chat-files",
+    ),
+    path(
+        "files/upload/",
+        views.FileUploadView.as_view(),
+        name="chat-file-upload",
+    ),
+    path(
+        "files/<str:file_id>/",
+        views.FileDeleteView.as_view(),
+        name="chat-file-delete",
+    ),
+]

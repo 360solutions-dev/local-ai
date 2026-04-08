@@ -9,8 +9,13 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from fastapi import FastAPI
+import json
+import tempfile
+import uuid
+
+from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel as PydanticModel
 
 app = FastAPI(title="local-ai API", version="0.1.0")
 
@@ -69,3 +74,278 @@ def health():
 @app.get("/api/health/live")
 def health_live():
     return {"status": "ok"}
+
+
+@app.get("/api/models")
+def list_models():
+    """List models installed in Ollama."""
+    try:
+        import urllib.request
+
+        from config import OLLAMA_BASE_URL
+
+        url = f"{OLLAMA_BASE_URL.rstrip('/')}/api/tags"
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            data = json.loads(resp.read())
+            models = []
+            for m in data.get("models", []):
+                name = m.get("name", "")
+                size_bytes = m.get("size", 0)
+                size_gb = round(size_bytes / (1024 ** 3), 1)
+                # Skip embedding models
+                if "embed" in name.lower():
+                    continue
+                models.append({
+                    "id": name,
+                    "name": name,
+                    "size": f"{size_gb} GB",
+                    "modified": m.get("modified_at", ""),
+                })
+            return {"models": models}
+    except Exception as e:
+        return {"models": [], "error": str(e)}
+
+
+class PullModelRequest(PydanticModel):
+    name: str
+
+
+@app.post("/api/models/pull")
+def pull_model(req: PullModelRequest):
+    """Pull a model from Ollama with streaming progress via SSE."""
+    import http.client
+    from urllib.parse import urlparse
+
+    from fastapi.responses import StreamingResponse
+
+    from config import OLLAMA_BASE_URL
+
+    parsed = urlparse(OLLAMA_BASE_URL)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or 11434
+    payload = json.dumps({"name": req.name, "stream": True})
+
+    def stream_progress():
+        conn = None
+        try:
+            conn = http.client.HTTPConnection(host, port, timeout=600)
+            conn.request("POST", "/api/pull", body=payload, headers={"Content-Type": "application/json"})
+            resp = conn.getresponse()
+
+            # Read line by line for real-time streaming
+            while True:
+                line = resp.readline()
+                if not line:
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    status_text = data.get("status", "")
+                    total = data.get("total", 0)
+                    completed = data.get("completed", 0)
+                    pct = 0
+                    if total > 0:
+                        pct = min(round(completed / total * 100), 100)
+                    event = json.dumps({
+                        "status": status_text,
+                        "percent": pct,
+                        "total": total,
+                        "completed": completed,
+                    })
+                    yield f"data: {event}\n\n"
+                except json.JSONDecodeError:
+                    continue
+            yield f"data: {json.dumps({'status': 'success', 'percent': 100})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'status': 'error', 'error': str(e)})}\n\n"
+        finally:
+            if conn:
+                conn.close()
+
+    return StreamingResponse(stream_progress(), media_type="text/event-stream")
+
+
+@app.delete("/api/models/{model_name}")
+def delete_model(model_name: str):
+    """Delete a model from Ollama."""
+    import urllib.request
+
+    from config import OLLAMA_BASE_URL
+
+    url = f"{OLLAMA_BASE_URL.rstrip('/')}/api/delete"
+    payload = json.dumps({"name": model_name}).encode()
+    try:
+        request = urllib.request.Request(
+            url, data=payload, headers={"Content-Type": "application/json"}, method="DELETE"
+        )
+        with urllib.request.urlopen(request, timeout=30) as resp:
+            return {"status": "deleted", "model": model_name}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Chat / RAG endpoint — called by Django to generate AI answers
+# ---------------------------------------------------------------------------
+
+class AskRequest(PydanticModel):
+    question: str
+    model: str | None = None
+
+
+@app.post("/api/ask")
+def ask_question(req: AskRequest):
+    """Run RAG: retrieve relevant docs and generate an answer via Ollama."""
+    from pathlib import Path
+
+    from config import EMBEDDING_MODEL, LLM_MODEL, OLLAMA_BASE_URL, PERSIST_DIRECTORY
+
+    llm_model = req.model or LLM_MODEL
+
+    store_path = Path(PERSIST_DIRECTORY)
+    if not store_path.exists() or not (store_path / "index.faiss").exists():
+        return {
+            "answer": "No documents have been indexed yet. Please upload and index files first to get AI-powered answers.",
+            "sources": [],
+        }
+
+    try:
+        from langchain_community.vectorstores import FAISS
+        from langchain_ollama import OllamaEmbeddings
+
+        from rag_chain import answer_question
+        from vector_store import VectorStoreManager
+
+        embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL, base_url=OLLAMA_BASE_URL)
+        vs = VectorStoreManager()
+        vs._vector_store = FAISS.load_local(
+            str(store_path), embeddings, allow_dangerous_deserialization=True
+        )
+        retriever = vs.get_retriever()
+        answer, docs = answer_question(question=req.question, retriever=retriever, model=llm_model)
+        sources = [
+            d.metadata.get("filename", d.metadata.get("source", "unknown"))
+            for d in docs
+        ]
+        return {"answer": answer, "sources": sources}
+    except Exception as e:
+        return {"answer": f"Error generating response: {e}", "sources": [], "error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# File metadata storage (JSON file on disk)
+# ---------------------------------------------------------------------------
+
+FILES_META_PATH = ROOT / "indexed_files.json"
+
+
+def _load_files_meta() -> list:
+    if FILES_META_PATH.exists():
+        try:
+            return json.loads(FILES_META_PATH.read_text())
+        except (json.JSONDecodeError, OSError):
+            return []
+    return []
+
+
+def _save_files_meta(files: list):
+    FILES_META_PATH.write_text(json.dumps(files, indent=2))
+
+
+# ---------------------------------------------------------------------------
+# File upload endpoint
+# ---------------------------------------------------------------------------
+
+@app.post("/api/files/upload")
+async def upload_file(file: UploadFile = File(...)):
+    """Upload a document, process it, and add to the vector index."""
+    from config import EMBEDDING_MODEL, OLLAMA_BASE_URL, PERSIST_DIRECTORY
+    from document_loader import DocumentProcessor
+    from vector_store import VectorStoreManager
+
+    # Validate file type
+    allowed = {".pdf", ".docx", ".doc", ".txt", ".md", ".csv"}
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in allowed:
+        return {"error": f"Unsupported file type: {suffix}", "supported": list(allowed)}
+
+    # Save to temp file
+    content = await file.read()
+    file_size = len(content)
+
+    # .md and .csv are loaded as text
+    save_suffix = ".txt" if suffix in (".md", ".csv") else suffix
+    with tempfile.NamedTemporaryFile(delete=False, suffix=save_suffix) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        # Process document into chunks
+        processor = DocumentProcessor()
+        chunks = processor.process_documents([tmp_path])
+
+        if not chunks:
+            return {"error": "No content could be extracted from the file."}
+
+        # Update filename metadata to use original name
+        for chunk in chunks:
+            chunk.metadata["filename"] = file.filename
+            chunk.metadata["source"] = file.filename
+
+        # Load existing index or create new one
+        store_path = Path(PERSIST_DIRECTORY)
+        from langchain_community.vectorstores import FAISS
+        from langchain_ollama import OllamaEmbeddings
+
+        embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL, base_url=OLLAMA_BASE_URL)
+
+        if store_path.exists() and (store_path / "index.faiss").exists():
+            existing_vs = FAISS.load_local(
+                str(store_path), embeddings, allow_dangerous_deserialization=True
+            )
+            existing_vs.add_documents(chunks)
+            existing_vs.save_local(str(store_path))
+        else:
+            store_path.mkdir(parents=True, exist_ok=True)
+            new_vs = FAISS.from_documents(chunks, embeddings)
+            new_vs.save_local(str(store_path))
+
+        # Save file metadata
+        file_id = uuid.uuid4().hex[:12]
+        file_meta = {
+            "id": file_id,
+            "name": file.filename,
+            "size": file_size,
+            "chunks": len(chunks),
+            "type": suffix,
+        }
+        files = _load_files_meta()
+        files.append(file_meta)
+        _save_files_meta(files)
+
+        return {"file": file_meta}
+
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+@app.get("/api/files")
+def list_files():
+    """List all indexed files."""
+    files = _load_files_meta()
+    return {"files": files}
+
+
+@app.delete("/api/files/{file_id}")
+def delete_file(file_id: str):
+    """Remove a file from the metadata list."""
+    files = _load_files_meta()
+    new_files = [f for f in files if f.get("id") != file_id]
+    if len(new_files) == len(files):
+        return {"error": "File not found."}
+    _save_files_meta(new_files)
+    return {"message": "File removed."}

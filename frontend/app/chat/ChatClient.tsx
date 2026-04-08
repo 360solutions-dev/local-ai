@@ -9,30 +9,113 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "@/lib/i18n";
+import {
+  useConversations,
+  useConversationMessages,
+  useCreateConversation,
+  useSendMessage,
+  useDeleteConversation,
+  useIndexedFiles,
+  useUploadFile,
+  useDeleteFile,
+  useOllamaModels,
+  type ChatMessage,
+} from "@/hooks/use-chat";
 
-type ChatItem = { id: string; label: string };
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function groupByDate(
+  items: { id: number; title: string; created_at: string }[],
+): { label: string; items: { id: number; title: string; created_at: string }[] }[] {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86400000);
+
+  const groups: Record<string, { id: number; title: string; created_at: string }[]> = {};
+
+  for (const item of items) {
+    const d = new Date(item.created_at);
+    const itemDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    let label: string;
+    if (itemDate >= today) label = "today";
+    else if (itemDate >= yesterday) label = "yesterday";
+    else label = "older";
+
+    if (!groups[label]) groups[label] = [];
+    groups[label].push(item);
+  }
+
+  const result: { label: string; items: typeof items }[] = [];
+  if (groups["today"]?.length) result.push({ label: "today", items: groups["today"] });
+  if (groups["yesterday"]?.length) result.push({ label: "yesterday", items: groups["yesterday"] });
+  if (groups["older"]?.length) result.push({ label: "older", items: groups["older"] });
+  return result;
+}
+
+function parseSources(sources: string[] | null): string[] {
+  let list: string[] = [];
+  if (!sources) return list;
+  if (Array.isArray(sources)) {
+    list = sources;
+  } else {
+    try {
+      const parsed = JSON.parse(sources as unknown as string);
+      list = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  // Deduplicate sources
+  return [...new Set(list)];
+}
 
 export default function ChatClient() {
   const { t } = useTranslation();
   const [filePanelOpen, setFilePanelOpen] = useState(true);
-  const [activeChatId, setActiveChatId] = useState("1");
-  const [modelOverlayHidden, setModelOverlayHidden] = useState(true);
-  const [selectedModel, setSelectedModel] = useState<string | null>(null);
-  const [downloadBusy, setDownloadBusy] = useState(false);
-  const [progressPct, setProgressPct] = useState(0);
-  const [progressStatus, setProgressStatus] = useState(t("chat.connectingOllama"));
+  const [activeChatId, setActiveChatId] = useState<number | null>(null);
+  const [modelOverlayOpen, setModelOverlayOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string>("");
   const [input, setInput] = useState("");
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  const [extraTail, setExtraTail] = useState<
-    { id: string; role: "user" | "ai"; text: string }[]
+  // Optimistic messages shown before server confirms
+  const [pendingMessages, setPendingMessages] = useState<
+    { id: string; role: "user" | "assistant"; content: string }[]
   >([]);
 
-  const chats: ChatItem[] = [
-    { id: "1", label: "Q3 Revenue Analysis" },
-    { id: "2", label: "API Documentation Review" },
-    { id: "3", label: "Customer Feedback Summary" },
-  ];
+  // API hooks
+  const { data: conversations = [], isLoading: convLoading } = useConversations();
+  const { data: messages = [], isLoading: msgsLoading } = useConversationMessages(activeChatId);
+  const createConversation = useCreateConversation();
+  const sendMessage = useSendMessage();
+  const deleteConversation = useDeleteConversation();
+  const { data: indexedFiles = [], isLoading: filesLoading } = useIndexedFiles();
+  const uploadFile = useUploadFile();
+  const deleteFile = useDeleteFile();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { data: ollamaModels = [], isLoading: modelsLoading } = useOllamaModels();
+
+  // Clear pending messages when active chat changes (navigation, switching chats)
+  useEffect(() => {
+    setPendingMessages([]);
+  }, [activeChatId]);
+
+  // Auto-select first available model
+  useEffect(() => {
+    if (!selectedModel && ollamaModels.length > 0) {
+      setSelectedModel(ollamaModels[0].id);
+    }
+  }, [selectedModel, ollamaModels]);
+
+  // Auto-select first conversation
+  useEffect(() => {
+    if (!activeChatId && conversations.length > 0) {
+      setActiveChatId(conversations[0].id);
+    }
+  }, [activeChatId, conversations]);
 
   const scrollToBottom = useCallback(() => {
     const el = messagesContainerRef.current;
@@ -41,66 +124,135 @@ export default function ChatClient() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [extraTail, scrollToBottom]);
+  }, [messages, pendingMessages, scrollToBottom]);
 
-  function sendMessage() {
+  async function handleSend() {
     const text = input.trim();
     if (!text) return;
-    const id = `m-${Date.now()}`;
-    setExtraTail((prev) => [...prev, { id, role: "user", text }]);
+
+    let chatId = activeChatId;
+
+    // If no active conversation, create one first
+    if (!chatId) {
+      try {
+        const conv = await createConversation.mutateAsync(undefined);
+        chatId = conv.id;
+        setActiveChatId(chatId);
+      } catch {
+        return;
+      }
+    }
+
+    // Optimistic: show user message immediately
+    const tempId = `pending-${Date.now()}`;
+    setPendingMessages((prev) => [
+      ...prev,
+      { id: tempId, role: "user", content: text },
+      { id: `${tempId}-thinking`, role: "assistant", content: "Thinking..." },
+    ]);
     setInput("");
-    window.setTimeout(() => {
-      setExtraTail((prev) => [
-        ...prev,
-        {
-          id: `${id}-ai`,
-          role: "ai",
-          text: "I'm searching through your indexed files to find the most relevant information...\n\n(This is a demo — in the real app, the response would come from your local LLM)",
+
+    sendMessage.mutate(
+      { conversationId: chatId, content: text, model: selectedModel || undefined },
+      {
+        onSettled: () => {
+          setPendingMessages([]);
         },
-      ]);
-    }, 1000);
+      },
+    );
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      handleSend();
     }
   }
 
-  function newChat() {
-    window.alert("New chat created! (Demo)");
+  async function handleNewChat() {
+    try {
+      const conv = await createConversation.mutateAsync(undefined);
+      setActiveChatId(conv.id);
+      setPendingMessages([]);
+    } catch {
+      // error handled by hook
+    }
   }
 
-  function selectModelOption(model: string) {
-    setSelectedModel(model);
+  function handleDeleteConversation(e: React.MouseEvent, convId: number) {
+    e.stopPropagation();
+    deleteConversation.mutate(convId, {
+      onSuccess: () => {
+        if (activeChatId === convId) {
+          setActiveChatId(null);
+          setPendingMessages([]);
+        }
+      },
+    });
   }
 
-  function downloadModel() {
-    if (!selectedModel) return;
-    setDownloadBusy(true);
-    setProgressPct(0);
-    setProgressStatus(t("chat.connectingOllama"));
-    const statuses = [
-      t("chat.connectingOllama"),
-      t("chat.pullingManifest"),
-      t("chat.downloadingLayers"),
-      t("chat.downloadingLayers"),
-      t("chat.verifying"),
-      t("chat.loadingModel"),
-    ];
-    let pct = 0;
-    const interval = window.setInterval(() => {
-      pct += Math.random() * 8 + 2;
-      if (pct > 100) pct = 100;
-      setProgressPct(Math.round(pct));
-      setProgressStatus(statuses[Math.min(Math.floor(pct / 18), statuses.length - 1)]!);
-      if (pct >= 100) {
-        window.clearInterval(interval);
-        setProgressStatus(t("chat.modelReady"));
-        window.setTimeout(() => setModelOverlayHidden(true), 800);
-      }
-    }, 300);
+
+  // Group conversations by date
+  const grouped = groupByDate(conversations);
+
+  // Combine server messages with optimistic pending messages
+  const allMessages: (ChatMessage | { id: string; role: "user" | "assistant"; content: string; sources?: null; created_at?: null })[] = [
+    ...messages,
+    ...pendingMessages,
+  ];
+
+  const isSending = sendMessage.isPending;
+
+  function renderMessage(m: { id: string | number; role: string; content: string; sources?: string[] | null; created_at?: string | null }, isPending?: boolean) {
+    const isUser = m.role === "user";
+    const sourceList = parseSources(m.sources ?? null);
+    const isThinking = isPending && m.role === "assistant";
+
+    if (isUser) {
+      return (
+        <div key={m.id} className="max-w-[720px] w-full mx-auto flex gap-3 flex-row-reverse animate-[msgIn_0.3s_ease]">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[0.8rem] shrink-0 mt-0.5 bg-linear-to-br from-indigo-500 to-indigo-400 text-white font-bold">A</div>
+          <div className="flex-1 text-right">
+            <div className="text-[0.78rem] font-semibold mb-1 flex items-center gap-2 justify-end">
+              {t("chat.you")} <span className="font-mono text-[0.68rem] text-text-dim font-normal">{m.created_at ? formatTime(m.created_at) : "now"}</span>
+            </div>
+            <div className={`inline-block text-left px-4 py-3 rounded-xl bg-indigo-500/[0.12] border border-indigo-500/20 rounded-tr-sm ${isPending ? "opacity-70" : ""}`}>
+              <div className="text-[0.92rem] leading-[1.7] text-text-muted font-light">{m.content}</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div key={m.id} className="max-w-[720px] w-full mx-auto flex gap-3 animate-[msgIn_0.3s_ease]">
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[0.8rem] shrink-0 mt-0.5 bg-accent/15 border border-border-accent text-accent">🤖</div>
+        <div className="flex-1">
+          <div className="text-[0.78rem] font-semibold mb-1 flex items-center gap-2">
+            local-ai <span className="font-mono text-[0.68rem] text-text-dim font-normal">{m.created_at ? formatTime(m.created_at) : "now"}</span>
+          </div>
+          <div className={`inline-block text-left px-4 py-3 rounded-xl bg-bg-card border border-border rounded-tl-sm ${isThinking ? "animate-pulse" : ""}`}>
+            <div className="text-[0.92rem] leading-[1.7] text-text-muted font-light">
+              {m.content.split("\n").map((line, i) => (
+                <span key={i}>
+                  {i > 0 && <br />}
+                  {line}
+                </span>
+              ))}
+            </div>
+            {sourceList.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {sourceList.map((src, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 font-mono text-[0.7rem] text-accent-secondary bg-accent-secondary/[0.08] px-2 py-0.5 rounded">
+                    📄 {src}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -126,38 +278,49 @@ export default function ChatClient() {
             <span className="text-text-dim">.run</span>
           </Link>
 
-          <button type="button" className="mx-3 mt-3 mb-1 py-2.5 bg-accent/15 border border-dashed border-border-accent rounded-lg text-accent font-body text-[0.88rem] font-medium cursor-pointer transition-all text-center hover:bg-accent/30 hover:border-solid" onClick={newChat}>
-            {t("chat.newChat")}
+          <button
+            type="button"
+            className="mx-3 mt-3 mb-1 py-2.5 bg-accent/15 border border-dashed border-border-accent rounded-lg text-accent font-body text-[0.88rem] font-medium cursor-pointer transition-all text-center hover:bg-accent/30 hover:border-solid disabled:opacity-50"
+            onClick={handleNewChat}
+            disabled={createConversation.isPending}
+          >
+            {createConversation.isPending ? "Creating..." : t("chat.newChat")}
           </button>
 
           <div className="flex-1 overflow-y-auto px-2.5">
-            <div className="font-mono text-[0.65rem] text-text-dim tracking-widest uppercase px-2 pt-3 pb-1">{t("chat.today")}</div>
-            {chats.slice(0, 2).map((c) => (
-              <div
-                key={c.id}
-                role="button"
-                tabIndex={0}
-                className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg text-[0.85rem] cursor-pointer transition-all mb-px ${activeChatId === c.id ? "bg-accent/15 text-accent" : "text-text-muted hover:bg-bg-card hover:text-text"}`}
-                onClick={() => setActiveChatId(c.id)}
-                onKeyDown={(e) => e.key === "Enter" && setActiveChatId(c.id)}
-              >
-                <span className="text-[0.8rem] opacity-60">💬</span>
-                <span className="flex-1 whitespace-nowrap overflow-hidden text-ellipsis">{c.label}</span>
-                <span className="opacity-0 group-hover:opacity-100 text-[0.75rem] text-text-dim cursor-pointer px-1 py-0.5 rounded transition-all hover:text-danger hover:bg-danger/10" onClick={(e) => e.stopPropagation()} role="presentation">✕</span>
-              </div>
-            ))}
-
-            <div className="font-mono text-[0.65rem] text-text-dim tracking-widest uppercase px-2 pt-3 pb-1">{t("chat.yesterday")}</div>
-            <div
-              role="button"
-              tabIndex={0}
-              className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg text-[0.85rem] cursor-pointer transition-all mb-px ${activeChatId === chats[2]!.id ? "bg-accent/15 text-accent" : "text-text-muted hover:bg-bg-card hover:text-text"}`}
-              onClick={() => setActiveChatId(chats[2]!.id)}
-            >
-              <span className="text-[0.8rem] opacity-60">💬</span>
-              <span className="flex-1 whitespace-nowrap overflow-hidden text-ellipsis">{chats[2]!.label}</span>
-              <span className="opacity-0 group-hover:opacity-100 text-[0.75rem] text-text-dim cursor-pointer px-1 py-0.5 rounded transition-all hover:text-danger hover:bg-danger/10" onClick={(e) => e.stopPropagation()}>✕</span>
-            </div>
+            {convLoading ? (
+              <div className="px-3 py-4 text-[0.82rem] text-text-dim">Loading...</div>
+            ) : conversations.length === 0 ? (
+              <div className="px-3 py-4 text-[0.82rem] text-text-dim text-center">No conversations yet</div>
+            ) : (
+              grouped.map((group) => (
+                <div key={group.label}>
+                  <div className="font-mono text-[0.65rem] text-text-dim tracking-widest uppercase px-2 pt-3 pb-1">
+                    {group.label === "today" ? t("chat.today") : group.label === "yesterday" ? t("chat.yesterday") : "Older"}
+                  </div>
+                  {group.items.map((c) => (
+                    <div
+                      key={c.id}
+                      role="button"
+                      tabIndex={0}
+                      className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg text-[0.85rem] cursor-pointer transition-all mb-px ${activeChatId === c.id ? "bg-accent/15 text-accent" : "text-text-muted hover:bg-bg-card hover:text-text"}`}
+                      onClick={() => { setActiveChatId(c.id); setPendingMessages([]); }}
+                      onKeyDown={(e) => e.key === "Enter" && setActiveChatId(c.id)}
+                    >
+                      <span className="text-[0.8rem] opacity-60">💬</span>
+                      <span className="flex-1 whitespace-nowrap overflow-hidden text-ellipsis">{c.title}</span>
+                      <span
+                        className="opacity-0 group-hover:opacity-100 text-[0.75rem] text-text-dim cursor-pointer px-1 py-0.5 rounded transition-all hover:text-danger hover:bg-danger/10"
+                        onClick={(e) => handleDeleteConversation(e, c.id)}
+                        role="presentation"
+                      >
+                        ✕
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ))
+            )}
           </div>
 
           <div className="px-4 py-3 border-t border-border">
@@ -171,13 +334,13 @@ export default function ChatClient() {
           <div className="flex items-center justify-between px-6 py-3 border-b border-border bg-bg-elevated">
             <div className="text-[0.95rem] font-semibold flex items-center gap-2">
               💬 {t("chat.chatWithFiles")}
-              <span className="font-mono text-[0.72rem] text-accent bg-accent/15 px-2 py-0.5 rounded">llama3.2 · Ollama</span>
+              <span className="font-mono text-[0.72rem] text-accent bg-accent/15 px-2 py-0.5 rounded">{selectedModel} · Ollama</span>
             </div>
             <div className="flex gap-2">
               <button type="button" className="bg-bg-card border border-border text-text-muted px-3 py-1.5 rounded-md font-mono text-[0.75rem] cursor-pointer transition-all flex items-center gap-1.5 hover:border-accent hover:text-accent" onClick={() => setFilePanelOpen((o) => !o)}>
-                📁 {t("chat.files")} <span>(3)</span>
+                📁 {t("chat.files")}
               </button>
-              <button type="button" className="bg-bg-card border border-border text-text-muted px-3 py-1.5 rounded-md font-mono text-[0.75rem] cursor-pointer transition-all flex items-center gap-1.5 hover:border-accent hover:text-accent">
+              <button type="button" className="bg-bg-card border border-border text-text-muted px-3 py-1.5 rounded-md font-mono text-[0.75rem] cursor-pointer transition-all flex items-center gap-1.5 hover:border-accent hover:text-accent" onClick={() => setModelOverlayOpen(true)}>
                 ⚙️ {t("chat.model")}
               </button>
             </div>
@@ -185,111 +348,65 @@ export default function ChatClient() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-6" ref={messagesContainerRef}>
-            {/* AI welcome message */}
-            <div className="max-w-[720px] w-full mx-auto flex gap-3 animate-[msgIn_0.3s_ease]">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[0.8rem] shrink-0 mt-0.5 bg-accent/15 border border-border-accent text-accent">🤖</div>
-              <div className="flex-1">
-                <div className="text-[0.78rem] font-semibold mb-1 flex items-center gap-2">local-ai <span className="font-mono text-[0.68rem] text-text-dim font-normal">10:23 AM</span></div>
-                <div className="inline-block text-left px-4 py-3 rounded-xl bg-bg-card border border-border rounded-tl-sm">
-                  <div className="text-[0.92rem] leading-[1.7] text-text-muted font-light">
-                    I&apos;ve indexed <strong className="text-text font-medium">3 files</strong> in this conversation. You can ask me anything about their contents. I&apos;m using local embeddings to find the most relevant sections for your questions.
+            {!modelsLoading && ollamaModels.length === 0 && (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center max-w-[400px]">
+                  <div className="text-4xl mb-3">🤖</div>
+                  <div className="text-[1.1rem] font-semibold mb-2">No AI model installed</div>
+                  <div className="text-[0.85rem] text-text-muted mb-4 leading-relaxed">
+                    You need to install a language model before you can chat. Go to Model Engines to download one.
                   </div>
+                  <Link
+                    href="/model-engines"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-accent text-bg border-none rounded-lg font-body text-[0.88rem] font-semibold no-underline transition-all hover:-translate-y-0.5"
+                  >
+                    Go to Model Engines
+                  </Link>
                 </div>
               </div>
-            </div>
-
-            {/* User message */}
-            <div className="max-w-[720px] w-full mx-auto flex gap-3 flex-row-reverse animate-[msgIn_0.3s_ease]">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[0.8rem] shrink-0 mt-0.5 bg-linear-to-br from-indigo-500 to-indigo-400 text-white font-bold">A</div>
-              <div className="flex-1 text-right">
-                <div className="text-[0.78rem] font-semibold mb-1 flex items-center gap-2 justify-end">You <span className="font-mono text-[0.68rem] text-text-dim font-normal">10:24 AM</span></div>
-                <div className="inline-block text-left px-4 py-3 rounded-xl bg-indigo-500/[0.12] border border-indigo-500/20 rounded-tr-sm">
-                  <div className="text-[0.92rem] leading-[1.7] text-text-muted font-light">What were the Q3 revenue numbers and how did they compare to Q2?</div>
-                </div>
-              </div>
-            </div>
-
-            {/* AI response */}
-            <div className="max-w-[720px] w-full mx-auto flex gap-3 animate-[msgIn_0.3s_ease]">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[0.8rem] shrink-0 mt-0.5 bg-accent/15 border border-border-accent text-accent">🤖</div>
-              <div className="flex-1">
-                <div className="text-[0.78rem] font-semibold mb-1 flex items-center gap-2">local-ai <span className="font-mono text-[0.68rem] text-text-dim font-normal">10:24 AM</span></div>
-                <div className="inline-block text-left px-4 py-3 rounded-xl bg-bg-card border border-border rounded-tl-sm">
-                  <div className="text-[0.92rem] leading-[1.7] text-text-muted font-light">
-                    Based on the quarterly report, <strong className="text-text font-medium">Q3 revenue was $4.2M</strong>, representing an <strong className="text-text font-medium">18% increase</strong> from Q2&apos;s $3.56M. The growth was primarily driven by enterprise subscription upgrades and a 23% increase in new customer acquisition.<br /><br />
-                    Key highlights from the report:<br />
-                    • Enterprise ARR grew to $2.8M (up from $2.1M in Q2)<br />
-                    • Customer churn decreased to 3.2% from 4.8%<br />
-                    • Average deal size increased by 15% to $18,400
-                  </div>
-                  <div className="inline-flex items-center gap-1 font-mono text-[0.7rem] text-accent-secondary bg-accent-secondary/[0.08] px-2 py-0.5 rounded mt-2">📄 Source: Q3-Report-2024.pdf — pages 12-14</div>
-                </div>
-              </div>
-            </div>
-
-            {/* User message 2 */}
-            <div className="max-w-[720px] w-full mx-auto flex gap-3 flex-row-reverse animate-[msgIn_0.3s_ease]">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[0.8rem] shrink-0 mt-0.5 bg-linear-to-br from-indigo-500 to-indigo-400 text-white font-bold">A</div>
-              <div className="flex-1 text-right">
-                <div className="text-[0.78rem] font-semibold mb-1 flex items-center gap-2 justify-end">You <span className="font-mono text-[0.68rem] text-text-dim font-normal">10:25 AM</span></div>
-                <div className="inline-block text-left px-4 py-3 rounded-xl bg-indigo-500/[0.12] border border-indigo-500/20 rounded-tr-sm">
-                  <div className="text-[0.92rem] leading-[1.7] text-text-muted font-light">What does the financial projection spreadsheet say about Q4 targets?</div>
-                </div>
-              </div>
-            </div>
-
-            {/* AI response 2 */}
-            <div className="max-w-[720px] w-full mx-auto flex gap-3 animate-[msgIn_0.3s_ease]">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[0.8rem] shrink-0 mt-0.5 bg-accent/15 border border-border-accent text-accent">🤖</div>
-              <div className="flex-1">
-                <div className="text-[0.78rem] font-semibold mb-1 flex items-center gap-2">local-ai <span className="font-mono text-[0.68rem] text-text-dim font-normal">10:25 AM</span></div>
-                <div className="inline-block text-left px-4 py-3 rounded-xl bg-bg-card border border-border rounded-tl-sm">
-                  <div className="text-[0.92rem] leading-[1.7] text-text-muted font-light">
-                    According to the projections spreadsheet, the <strong className="text-text font-medium">Q4 revenue target is $5.1M</strong>, which would represent a 21% quarter-over-quarter growth. The model assumes:<br /><br />
-                    • 30 new enterprise deals at an average of $20,000<br />
-                    • 95% retention of existing ARR<br />
-                    • A planned price increase of 8% for the Pro tier effective November<br /><br />
-                    The spreadsheet flags this as an <strong className="text-text font-medium">&quot;aggressive but achievable&quot;</strong> target, noting it depends on closing 3 pending enterprise deals worth a combined $340K.
-                  </div>
-                  <div className="inline-flex items-center gap-1 font-mono text-[0.7rem] text-accent-secondary bg-accent-secondary/[0.08] px-2 py-0.5 rounded mt-2">📊 Source: Financial-Projections.xlsx — Sheet &quot;Q4 Forecast&quot;</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Dynamic messages */}
-            {extraTail.map((m) =>
-              m.role === "user" ? (
-                <div key={m.id} className="max-w-[720px] w-full mx-auto flex gap-3 flex-row-reverse animate-[msgIn_0.3s_ease]">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[0.8rem] shrink-0 mt-0.5 bg-linear-to-br from-indigo-500 to-indigo-400 text-white font-bold">A</div>
-                  <div className="flex-1 text-right">
-                    <div className="text-[0.78rem] font-semibold mb-1 flex items-center gap-2 justify-end">{t("chat.you")} <span className="font-mono text-[0.68rem] text-text-dim font-normal">now</span></div>
-                    <div className="inline-block text-left px-4 py-3 rounded-xl bg-indigo-500/[0.12] border border-indigo-500/20 rounded-tr-sm">
-                      <div className="text-[0.92rem] leading-[1.7] text-text-muted font-light">{m.text}</div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div key={m.id} className="max-w-[720px] w-full mx-auto flex gap-3 animate-[msgIn_0.3s_ease]">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[0.8rem] shrink-0 mt-0.5 bg-accent/15 border border-border-accent text-accent">🤖</div>
-                  <div className="flex-1">
-                    <div className="text-[0.78rem] font-semibold mb-1 flex items-center gap-2">local-ai <span className="font-mono text-[0.68rem] text-text-dim font-normal">now</span></div>
-                    <div className="inline-block text-left px-4 py-3 rounded-xl bg-bg-card border border-border rounded-tl-sm">
-                      <div className="text-[0.92rem] leading-[1.7] text-text-muted font-light">
-                        {m.text.split("\n").map((line, i) => (
-                          <span key={i}>
-                            {i > 0 && <br />}
-                            {line.startsWith("(") ? <em className="text-text-dim">{line}</em> : line}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ),
             )}
+
+            {!modelsLoading && ollamaModels.length > 0 && !activeChatId && !convLoading && (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center text-text-dim">
+                  <div className="text-4xl mb-3">💬</div>
+                  <div className="text-[0.95rem] font-medium mb-1">Start a conversation</div>
+                  <div className="text-[0.82rem]">Click &quot;+ New Chat&quot; or type a message below</div>
+                </div>
+              </div>
+            )}
+
+            {ollamaModels.length > 0 && activeChatId && msgsLoading && (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-text-dim text-[0.85rem]">Loading messages...</div>
+              </div>
+            )}
+
+            {ollamaModels.length > 0 && activeChatId && !msgsLoading && allMessages.length === 0 && (
+              <div className="max-w-[720px] w-full mx-auto flex gap-3 animate-[msgIn_0.3s_ease]">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[0.8rem] shrink-0 mt-0.5 bg-accent/15 border border-border-accent text-accent">🤖</div>
+                <div className="flex-1">
+                  <div className="text-[0.78rem] font-semibold mb-1 flex items-center gap-2">local-ai <span className="font-mono text-[0.68rem] text-text-dim font-normal">now</span></div>
+                  <div className="inline-block text-left px-4 py-3 rounded-xl bg-bg-card border border-border rounded-tl-sm">
+                    <div className="text-[0.92rem] leading-[1.7] text-text-muted font-light">
+                      Ask me anything about your indexed files. I&apos;ll use local embeddings to find the most relevant sections for your questions.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {ollamaModels.length > 0 && allMessages.map((m) => {
+              const isPending = typeof m.id === "string" && (m.id as string).startsWith("pending-");
+              return renderMessage(
+                { ...m, id: m.id, sources: "sources" in m ? m.sources : null, created_at: "created_at" in m ? m.created_at : null },
+                isPending,
+              );
+            })}
           </div>
 
-          {/* Input area */}
+          {/* Input area — hidden when no models */}
+          {ollamaModels.length > 0 && (
           <div className="px-8 py-4 pb-6 border-t border-border bg-bg-elevated">
             <div className="max-w-[720px] mx-auto relative">
               <textarea
@@ -299,14 +416,24 @@ export default function ChatClient() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
+                disabled={isSending}
               />
               <div className="absolute right-2.5 bottom-2.5 flex gap-1">
                 <button type="button" className="w-[34px] h-[34px] rounded-lg border border-border bg-bg-elevated text-text-muted cursor-pointer flex items-center justify-center text-[0.9rem] transition-all hover:border-accent hover:text-accent" title={t("chat.attachFile")} onClick={() => setFilePanelOpen((o) => !o)}>📎</button>
-                <button type="button" className="w-[34px] h-[34px] rounded-lg border-none bg-accent text-bg cursor-pointer flex items-center justify-center text-[0.9rem] transition-all hover:opacity-85" title={t("chat.send")} onClick={sendMessage}>↑</button>
+                <button
+                  type="button"
+                  className="w-[34px] h-[34px] rounded-lg border-none bg-accent text-bg cursor-pointer flex items-center justify-center text-[0.9rem] transition-all hover:opacity-85 disabled:opacity-50"
+                  title={t("chat.send")}
+                  onClick={handleSend}
+                  disabled={isSending || !input.trim()}
+                >
+                  ↑
+                </button>
               </div>
             </div>
             <div className="text-center mt-2 font-mono text-[0.68rem] text-text-dim">{t("chat.enterToSend")}</div>
           </div>
+          )}
         </div>
 
         {/* File Panel */}
@@ -316,91 +443,124 @@ export default function ChatClient() {
             <button type="button" className="bg-transparent border-none text-text-dim cursor-pointer text-lg px-1.5 py-0.5 rounded transition-colors hover:text-danger" onClick={() => setFilePanelOpen(false)}>✕</button>
           </div>
 
-          <div className="mx-3 mt-3 p-6 border border-dashed border-border rounded-[10px] text-center cursor-pointer transition-all hover:border-accent hover:bg-accent/15" onClick={() => document.getElementById("file-input")?.click()} role="presentation">
-            <div className="text-2xl mb-2">📤</div>
-            <div className="text-[0.82rem] text-text-muted font-light">{t("chat.dropFiles")}</div>
+          <div
+            className={`mx-3 mt-3 p-6 border border-dashed border-border rounded-[10px] text-center cursor-pointer transition-all hover:border-accent hover:bg-accent/15 ${uploadFile.isPending ? "opacity-50 pointer-events-none" : ""}`}
+            onClick={() => fileInputRef.current?.click()}
+            role="presentation"
+          >
+            <div className="text-2xl mb-2">{uploadFile.isPending ? "⏳" : "📤"}</div>
+            <div className="text-[0.82rem] text-text-muted font-light">
+              {uploadFile.isPending ? "Uploading & indexing..." : t("chat.dropFiles")}
+            </div>
             <div className="font-mono text-[0.68rem] text-text-dim mt-1">{t("chat.supportedFormats")}</div>
-            <input type="file" id="file-input" hidden multiple accept=".pdf,.docx,.xlsx,.csv,.txt,.md" />
+            <input
+              ref={fileInputRef}
+              type="file"
+              hidden
+              multiple
+              accept=".pdf,.docx,.xlsx,.csv,.txt,.md"
+              onChange={(e) => {
+                const files = e.target.files;
+                if (!files) return;
+                Array.from(files).forEach((file) => {
+                  uploadFile.mutate(file);
+                });
+                e.target.value = "";
+              }}
+            />
           </div>
 
           <div className="flex-1 overflow-y-auto px-3">
-            <div className="font-mono text-[0.65rem] text-text-dim tracking-widest uppercase px-1 pt-2.5 pb-1">{t("chat.indexedFiles", { count: "3" })}</div>
-
-            {[
-              { icon: "📄", name: "Q3-Report-2024.pdf", meta: "2.4 MB · 28 pages · 142 chunks" },
-              { icon: "📊", name: "Financial-Projections.xlsx", meta: "890 KB · 6 sheets · 84 chunks" },
-              { icon: "📝", name: "meeting-notes.md", meta: "12 KB · 36 chunks" },
-            ].map((f) => (
-              <div key={f.name} className="group flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-colors mb-px hover:bg-bg-card">
-                <span className="text-[0.9rem]">{f.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[0.82rem] whitespace-nowrap overflow-hidden text-ellipsis">{f.name}</div>
-                  <div className="font-mono text-[0.68rem] text-text-dim">{f.meta}</div>
-                </div>
-                <span className="font-mono text-[0.65rem] text-accent bg-accent/15 px-1.5 py-0.5 rounded">{t("chat.indexed")}</span>
-                <button type="button" className="opacity-0 group-hover:opacity-100 bg-transparent border-none text-text-dim cursor-pointer text-[0.8rem] px-1 py-0.5 rounded transition-all hover:text-danger">✕</button>
+            {filesLoading ? (
+              <div className="py-4 text-center text-[0.82rem] text-text-dim">Loading...</div>
+            ) : indexedFiles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <div className="text-2xl mb-2 opacity-40">📁</div>
+                <div className="text-[0.82rem] text-text-dim font-light">No files indexed yet</div>
+                <div className="text-[0.72rem] text-text-dim mt-1">Upload files above to get started</div>
               </div>
-            ))}
+            ) : (
+              <>
+                <div className="font-mono text-[0.65rem] text-text-dim tracking-widest uppercase px-1 pt-2.5 pb-1">
+                  {t("chat.indexedFiles", { count: String(indexedFiles.length) })}
+                </div>
+                {indexedFiles.map((f) => (
+                  <div key={f.id} className="group flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-colors mb-px hover:bg-bg-card">
+                    <span className="text-[0.9rem]">{f.type === ".pdf" ? "📄" : f.type === ".docx" ? "📝" : "📃"}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[0.82rem] whitespace-nowrap overflow-hidden text-ellipsis">{f.name}</div>
+                      <div className="font-mono text-[0.68rem] text-text-dim">
+                        {f.size > 1024 * 1024
+                          ? `${(f.size / 1024 / 1024).toFixed(1)} MB`
+                          : `${Math.round(f.size / 1024)} KB`}
+                        {" · "}{f.chunks} chunks
+                      </div>
+                    </div>
+                    <span className="font-mono text-[0.65rem] text-accent bg-accent/15 px-1.5 py-0.5 rounded">{t("chat.indexed")}</span>
+                    <button
+                      type="button"
+                      className="opacity-0 group-hover:opacity-100 bg-transparent border-none text-text-dim cursor-pointer text-[0.8rem] px-1 py-0.5 rounded transition-all hover:text-danger"
+                      onClick={() => deleteFile.mutate(f.id)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Model Setup Overlay */}
-      {!modelOverlayHidden && (
+      {/* Model Selector Overlay */}
+      {modelOverlayOpen && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000] backdrop-blur-[8px] animate-[fadeIn_0.3s_ease]">
           <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-[560px] max-h-[90vh] overflow-y-auto p-8 shadow-[0_25px_80px_rgba(0,0,0,0.6)]">
-            <h2 className="text-[1.4rem] font-bold mb-1.5">{t("chat.chooseModel")}</h2>
-            <p className="text-text-muted text-[0.92rem] font-light mb-6 leading-relaxed">
-              {t("chat.chooseModelDesc")}
-            </p>
-
-            <div>
-              {([
-                ["llama3.2", "Llama 3.2", "Meta's latest. Great balance of speed and quality.", "3.8 GB"],
-                ["mistral", "Mistral 7B", "Fast and efficient. Excellent for document Q&A.", "4.1 GB"],
-                ["qwen2.5", "Qwen 2.5 7B", "Strong multilingual support. Good for diverse docs.", "4.4 GB"],
-                ["deepseek-r1", "DeepSeek R1 8B", "Reasoning-focused. Best for complex analysis.", "4.9 GB"],
-                ["phi3", "Phi-3 Mini", "Microsoft's compact model. Fastest option, lower GPU needs.", "2.2 GB"],
-              ] as const).map(([id, name, details, size]) => (
-                <div
-                  key={id}
-                  role="button"
-                  tabIndex={0}
-                  className={`flex items-center gap-4 p-4 border rounded-[10px] cursor-pointer transition-all mb-2.5 ${selectedModel === id ? "border-accent bg-accent/15" : "border-border hover:border-border-accent hover:bg-bg-card"}`}
-                  onClick={() => selectModelOption(id)}
-                  onKeyDown={(e) => e.key === "Enter" && selectModelOption(id)}
-                >
-                  <div className={`w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${selectedModel === id ? "border-accent" : "border-border"}`}>
-                    <div className={`w-2 h-2 rounded-full bg-accent transition-opacity ${selectedModel === id ? "opacity-100" : "opacity-0"}`} />
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-[0.95rem] font-semibold mb-0.5">{name}</div>
-                    <div className="text-[0.8rem] text-text-muted font-light">{details}</div>
-                  </div>
-                  <div className="font-mono text-[0.72rem] text-text-dim shrink-0">{size}</div>
-                </div>
-              ))}
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-[1.4rem] font-bold mb-1.5">{t("chat.chooseModel")}</h2>
+                <p className="text-text-muted text-[0.92rem] font-light leading-relaxed">
+                  Showing models installed in Ollama
+                </p>
+              </div>
+              <button type="button" className="bg-transparent border-none text-text-dim cursor-pointer text-xl px-2 py-1 rounded transition-colors hover:text-danger" onClick={() => setModelOverlayOpen(false)}>✕</button>
             </div>
 
-            <button
-              type="button"
-              className="flex items-center justify-center gap-2 w-full py-3 bg-accent text-bg border-none rounded-lg font-body text-[0.95rem] font-semibold cursor-pointer mt-4 transition-all shadow-[0_0_30px_rgba(52,211,153,0.3)] hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0"
-              disabled={!selectedModel || downloadBusy}
-              onClick={downloadModel}
-            >
-              {!selectedModel ? t("chat.selectModel") : downloadBusy ? t("chat.downloadingModel") : t("chat.downloadAndContinue")}
-            </button>
-
-            {downloadBusy && (
-              <div className="mt-4">
-                <div className="flex justify-between font-mono text-[0.75rem] text-text-muted mb-1.5">
-                  <span>{t("chat.downloadingName", { name: selectedModel || "" })}</span>
-                  <span>{progressPct}%</span>
-                </div>
-                <div className="h-1.5 bg-bg-card rounded-sm overflow-hidden">
-                  <div className="h-full bg-accent rounded-sm transition-all duration-300" style={{ width: `${progressPct}%` }} />
-                </div>
-                <div className="font-mono text-[0.72rem] text-text-dim mt-1.5">{progressStatus}</div>
+            {ollamaModels.length === 0 ? (
+              <div className="text-center py-8 text-text-dim">
+                <div className="text-2xl mb-2">🤖</div>
+                <div className="text-[0.85rem]">No models found in Ollama</div>
+                <div className="text-[0.75rem] mt-1">Run: docker compose exec ollama ollama pull llama3.1:8b</div>
+              </div>
+            ) : (
+              <div>
+                {ollamaModels.map((m) => (
+                  <div
+                    key={m.id}
+                    role="button"
+                    tabIndex={0}
+                    className={`flex items-center gap-4 p-4 border rounded-[10px] cursor-pointer transition-all mb-2.5 ${selectedModel === m.id ? "border-accent bg-accent/15" : "border-border hover:border-border-accent hover:bg-bg-card"}`}
+                    onClick={() => {
+                      setSelectedModel(m.id);
+                      setModelOverlayOpen(false);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        setSelectedModel(m.id);
+                        setModelOverlayOpen(false);
+                      }
+                    }}
+                  >
+                    <div className={`w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${selectedModel === m.id ? "border-accent" : "border-border"}`}>
+                      <div className={`w-2 h-2 rounded-full bg-accent transition-opacity ${selectedModel === m.id ? "opacity-100" : "opacity-0"}`} />
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-[0.95rem] font-semibold">{m.name}</div>
+                    </div>
+                    <div className="font-mono text-[0.72rem] text-text-dim shrink-0">{m.size}</div>
+                    {selectedModel === m.id && <span className="font-mono text-[0.65rem] text-accent bg-accent/15 px-1.5 py-0.5 rounded">Active</span>}
+                  </div>
+                ))}
               </div>
             )}
           </div>

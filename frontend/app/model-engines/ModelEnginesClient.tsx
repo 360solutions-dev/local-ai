@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useTranslation } from "@/lib/i18n";
+import { useOllamaModels, useDeleteModel } from "@/hooks/use-chat";
+import { useDownload } from "@/lib/download-provider";
 
 interface Provider {
   name: string;
@@ -10,15 +12,6 @@ interface Provider {
   connected: boolean;
   isDefault?: boolean;
   meta: { label: string; value: string; accent?: boolean }[];
-}
-
-interface Model {
-  name: string;
-  tag?: string;
-  size: string;
-  params: string;
-  status: "ready" | "downloading";
-  isDefault?: boolean;
 }
 
 const connectedProviders: Provider[] = [
@@ -30,7 +23,7 @@ const connectedProviders: Provider[] = [
     isDefault: true,
     meta: [
       { label: "Endpoint", value: "localhost:11434" },
-      { label: "Models", value: "3 downloaded" },
+      { label: "Models", value: "connected" },
       { label: "GPU", value: "Active", accent: true },
     ],
   },
@@ -77,29 +70,26 @@ const availableProviders: Provider[] = [
   },
 ];
 
-const initialModels: Model[] = [
-  { name: "llama3.2", tag: "default", size: "3.8 GB", params: "8B", status: "ready", isDefault: true },
-  { name: "mistral", size: "4.1 GB", params: "7B", status: "ready" },
-  { name: "nomic-embed-text", tag: "embeddings", size: "274 MB", params: "137M", status: "ready" },
-];
-
 export default function ModelEnginesClient() {
   const { t } = useTranslation();
 
   const [showPullModal, setShowPullModal] = useState(false);
   const [pullInput, setPullInput] = useState("");
-  const [pullProgress, setPullProgress] = useState<number | null>(null);
-  const [models, setModels] = useState<Model[]>(initialModels);
   const [toast, setToast] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { status: string; latency?: string }>>({});
 
-  const [chatModel, setChatModel] = useState("llama3.2 (Ollama)");
+  const [chatModel, setChatModel] = useState("llama3.1:8b (Ollama)");
   const [embeddingModel, setEmbeddingModel] = useState("nomic-embed-text (Ollama)");
   const [ttsModel, setTtsModel] = useState("piper-en-amy (Built-in)");
 
+  // Real API hooks
+  const { data: ollamaModels = [], isLoading: modelsLoading } = useOllamaModels();
+  const deleteModelMutation = useDeleteModel();
+  const { download, isPulling, startPull } = useDownload();
+
   function showToastMsg(msg: string) {
     setToast(msg);
-    setTimeout(() => setToast(null), 2500);
+    setTimeout(() => setToast(null), 3500);
   }
 
   function testConnection(providerName: string) {
@@ -112,45 +102,23 @@ export default function ModelEnginesClient() {
     }, 1200);
   }
 
-  function pullModel() {
+  function handlePullModel() {
     const name = pullInput.trim();
-    if (!name) return;
+    if (!name || isPulling) return;
     setShowPullModal(false);
-    setPullProgress(0);
-    showToastMsg(t("modelEngines.pulling", { name }));
-
-    let pct = 0;
-    const interval = setInterval(() => {
-      pct += Math.random() * 15 + 5;
-      if (pct >= 100) {
-        pct = 100;
-        clearInterval(interval);
-        setPullProgress(null);
-        setModels((prev) => [
-          ...prev,
-          { name, size: "~2 GB", params: "?", status: "ready" },
-        ]);
-        showToastMsg(t("modelEngines.downloadedSuccess", { name }));
-      }
-      setPullProgress(Math.min(Math.round(pct), 100));
-    }, 400);
     setPullInput("");
+    startPull(name);
   }
 
-  function removeModel(idx: number) {
-    setModels((prev) => prev.filter((_, i) => i !== idx));
-    showToastMsg(t("modelEngines.modelRemoved"));
-  }
-
-  function setDefault(idx: number) {
-    setModels((prev) =>
-      prev.map((m, i) => ({
-        ...m,
-        isDefault: i === idx,
-        tag: i === idx ? "default" : m.tag === "default" ? undefined : m.tag,
-      }))
-    );
-    showToastMsg(t("modelEngines.defaultUpdated"));
+  function handleRemoveModel(modelName: string) {
+    deleteModelMutation.mutate(modelName, {
+      onSuccess: () => {
+        showToastMsg(t("modelEngines.modelRemoved"));
+      },
+      onError: (err) => {
+        showToastMsg(`Failed to remove: ${err.message}`);
+      },
+    });
   }
 
   return (
@@ -165,23 +133,24 @@ export default function ModelEnginesClient() {
         </div>
         <button
           onClick={() => setShowPullModal(true)}
-          className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-bg border-none rounded-lg font-body text-[0.9rem] font-semibold cursor-pointer transition-all shadow-[0_0_20px_rgba(52,211,153,0.15)] hover:-translate-y-0.5 hover:shadow-[0_0_40px_rgba(52,211,153,0.3)]"
+          disabled={isPulling}
+          className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-bg border-none rounded-lg font-body text-[0.9rem] font-semibold cursor-pointer transition-all shadow-[0_0_20px_rgba(52,211,153,0.15)] hover:-translate-y-0.5 hover:shadow-[0_0_40px_rgba(52,211,153,0.3)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {t("modelEngines.pullModel")}
+          {isPulling ? t("modelEngines.downloading") : t("modelEngines.pullModel")}
         </button>
       </div>
 
       {/* Pull progress bar */}
-      {pullProgress !== null && (
+      {download && (
         <div className="mb-6 bg-bg-card border border-border rounded-xl p-4">
           <div className="flex justify-between font-mono text-xs text-text-muted mb-2">
-            <span>{t("modelEngines.downloadingModel")}</span>
-            <span>{pullProgress}%</span>
+            <span>{download.status} — {download.modelName}</span>
+            <span>{download.percent}%</span>
           </div>
           <div className="h-1.5 bg-bg rounded-full overflow-hidden">
             <div
               className="h-full bg-accent rounded-full transition-all duration-300"
-              style={{ width: `${pullProgress}%` }}
+              style={{ width: `${download.percent}%` }}
             />
           </div>
         </div>
@@ -328,55 +297,42 @@ export default function ModelEnginesClient() {
       <div className="bg-bg-card border border-border rounded-xl p-6">
         <div className="w-full">
           {/* Table header */}
-          <div className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 px-4 py-2 font-mono text-[0.68rem] text-text-dim tracking-wide uppercase border-b border-border">
+          <div className="grid grid-cols-[2fr_1fr_1fr_auto] gap-4 px-4 py-2 font-mono text-[0.68rem] text-text-dim tracking-wide uppercase border-b border-border">
             <span>{t("modelEngines.model")}</span>
             <span>{t("modelEngines.size")}</span>
-            <span>{t("modelEngines.parameters")}</span>
             <span>{t("modelEngines.status")}</span>
             <span>{t("modelEngines.actions")}</span>
           </div>
           {/* Rows */}
-          {models.map((m, idx) => (
-            <div
-              key={m.name}
-              className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 px-4 py-3 items-center border-b border-border last:border-b-0 transition-colors hover:bg-bg-card-hover"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-[0.9rem] font-medium">{m.name}</span>
-                {m.tag && (
-                  <span className="font-mono text-[0.62rem] px-1.5 py-0.5 rounded-sm text-accent bg-accent/15">
-                    {m.tag}
-                  </span>
-                )}
-              </div>
-              <span className="font-mono text-[0.82rem] text-text-muted">{m.size}</span>
-              <span className="font-mono text-[0.82rem] text-text-muted">{m.params}</span>
-              <span
-                className={`font-mono text-[0.75rem] ${
-                  m.status === "ready" ? "text-accent" : "text-accent-warm"
-                }`}
+          {modelsLoading ? (
+            <div className="px-4 py-6 text-center text-text-dim text-[0.85rem]">Loading models...</div>
+          ) : ollamaModels.length === 0 ? (
+            <div className="px-4 py-6 text-center text-text-dim text-[0.85rem]">No models installed. Click &quot;Pull Model&quot; to download one.</div>
+          ) : (
+            ollamaModels.map((m) => (
+              <div
+                key={m.id}
+                className="grid grid-cols-[2fr_1fr_1fr_auto] gap-4 px-4 py-3 items-center border-b border-border last:border-b-0 transition-colors hover:bg-bg-card-hover"
               >
-                {m.status === "ready" ? t("modelEngines.ready") : t("modelEngines.downloading")}
-              </span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setDefault(idx)}
-                  disabled={m.tag === "embeddings"}
-                  className={`inline-flex items-center gap-1 px-3 py-1.5 bg-transparent text-text-muted border border-border rounded-md font-body text-[0.78rem] cursor-pointer transition-all hover:border-text-muted hover:text-text ${
-                    m.tag === "embeddings" ? "opacity-40 cursor-default" : ""
-                  }`}
-                >
-                  {t("modelEngines.setDefault")}
-                </button>
-                <button
-                  onClick={() => removeModel(idx)}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-transparent text-danger border border-danger/30 rounded-md font-body text-[0.78rem] cursor-pointer transition-all hover:bg-danger/10 hover:border-danger"
-                >
-                  {t("modelEngines.remove")}
-                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-[0.9rem] font-medium">{m.name}</span>
+                </div>
+                <span className="font-mono text-[0.82rem] text-text-muted">{m.size}</span>
+                <span className="font-mono text-[0.75rem] text-accent">
+                  {t("modelEngines.ready")}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleRemoveModel(m.id)}
+                    disabled={deleteModelMutation.isPending}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-transparent text-danger border border-danger/30 rounded-md font-body text-[0.78rem] cursor-pointer transition-all hover:bg-danger/10 hover:border-danger disabled:opacity-50"
+                  >
+                    {t("modelEngines.remove")}
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 
@@ -399,9 +355,9 @@ export default function ModelEnginesClient() {
               onChange={(e) => setChatModel(e.target.value)}
               className="w-full px-3 py-2.5 bg-bg border border-border rounded-lg text-text font-body text-[0.85rem] outline-none focus:border-border-focus appearance-none cursor-pointer"
             >
-              <option>llama3.2 (Ollama)</option>
-              <option>mistral (Ollama)</option>
-              <option>LM Studio — active model</option>
+              {ollamaModels.map((m) => (
+                <option key={m.id} value={`${m.name} (Ollama)`}>{m.name} (Ollama)</option>
+              ))}
             </select>
           </div>
           <div>
@@ -482,12 +438,12 @@ export default function ModelEnginesClient() {
               <input
                 value={pullInput}
                 onChange={(e) => setPullInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && pullModel()}
+                onKeyDown={(e) => e.key === "Enter" && handlePullModel()}
                 placeholder={t("modelEngines.pullPlaceholder")}
                 className="flex-1 px-4 py-3 bg-bg-card border border-border rounded-lg text-text font-mono text-[0.88rem] outline-none focus:border-border-focus"
               />
               <button
-                onClick={pullModel}
+                onClick={handlePullModel}
                 className="px-5 py-3 bg-accent text-bg border-none rounded-lg font-body font-semibold text-[0.88rem] cursor-pointer whitespace-nowrap"
               >
                 {t("modelEngines.pull")}

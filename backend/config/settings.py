@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     "accounts",
     "notifications",
     "system",
+    "chat",
 ]
 
 VERSION = "1.0.0"

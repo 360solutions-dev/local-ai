@@ -42,6 +42,35 @@ export async function apiGet<T = Record<string, unknown>>(
   return { ok: res.ok, status: res.status, data };
 }
 
+export async function apiDelete<T = Record<string, unknown>>(
+  path: string,
+): Promise<ApiResponse<T>> {
+  const res = await fetch(path, {
+    method: "DELETE",
+    credentials: "include",
+  });
+
+  const data = await res.json();
+  return { ok: res.ok, status: res.status, data };
+}
+
+export async function apiUpload<T = Record<string, unknown>>(
+  path: string,
+  file: File,
+): Promise<ApiResponse<T>> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(path, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+
+  const data = await res.json();
+  return { ok: res.ok, status: res.status, data };
+}
+
 export async function apiDownload(path: string, filename: string): Promise<void> {
   const res = await fetch(path, { credentials: "include" });
   if (!res.ok) throw new Error("Download failed");
