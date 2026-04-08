@@ -13,11 +13,21 @@ import json
 import tempfile
 import uuid
 
-from fastapi import FastAPI, File, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel as PydanticModel
 
 app = FastAPI(title="local-ai API", version="0.1.0")
+
+# --- API key authentication ---
+RAG_API_KEY = os.environ.get("RAG_API_KEY", "")
+
+
+def verify_api_key(x_api_key: str = Header(default="", alias="X-API-Key")):
+    """Verify the shared API key sent by Django backend."""
+    if RAG_API_KEY and x_api_key != RAG_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    return x_api_key
 
 _origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
 _origins_list = [o.strip() for o in _origins.split(",") if o.strip()]
@@ -76,7 +86,7 @@ def health_live():
     return {"status": "ok"}
 
 
-@app.get("/api/models")
+@app.get("/api/models", dependencies=[Depends(verify_api_key)])
 def list_models():
     """List models installed in Ollama."""
     try:
@@ -110,7 +120,7 @@ class PullModelRequest(PydanticModel):
     name: str
 
 
-@app.post("/api/models/pull")
+@app.post("/api/models/pull", dependencies=[Depends(verify_api_key)])
 def pull_model(req: PullModelRequest):
     """Pull a model from Ollama with streaming progress via SSE."""
     import http.client
@@ -167,7 +177,7 @@ def pull_model(req: PullModelRequest):
     return StreamingResponse(stream_progress(), media_type="text/event-stream")
 
 
-@app.delete("/api/models/{model_name}")
+@app.delete("/api/models/{model_name}", dependencies=[Depends(verify_api_key)])
 def delete_model(model_name: str):
     """Delete a model from Ollama."""
     import urllib.request
@@ -193,42 +203,92 @@ def delete_model(model_name: str):
 class AskRequest(PydanticModel):
     question: str
     model: str | None = None
+    file_filter: str | None = None
 
 
-@app.post("/api/ask")
+# ---------------------------------------------------------------------------
+# Cached FAISS index + embeddings — loaded once, reused across requests
+# ---------------------------------------------------------------------------
+
+import threading
+
+_index_lock = threading.Lock()
+_cached_embeddings = None
+_cached_vs = None
+_cached_index_mtime = None
+
+
+def _get_cached_index():
+    """Return cached FAISS vector store and embeddings. Reload if index file changed."""
+    global _cached_embeddings, _cached_vs, _cached_index_mtime
+
+    from config import EMBEDDING_MODEL, OLLAMA_BASE_URL, PERSIST_DIRECTORY
+
+    store_path = Path(PERSIST_DIRECTORY)
+    index_file = store_path / "index.faiss"
+
+    if not store_path.exists() or not index_file.exists():
+        return None, None
+
+    current_mtime = index_file.stat().st_mtime
+
+    with _index_lock:
+        if _cached_vs is not None and _cached_index_mtime == current_mtime:
+            return _cached_embeddings, _cached_vs
+
+        from langchain_community.vectorstores import FAISS
+        from langchain_ollama import OllamaEmbeddings
+
+        embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL, base_url=OLLAMA_BASE_URL)
+        vs_loaded = FAISS.load_local(
+            str(store_path), embeddings, allow_dangerous_deserialization=True
+        )
+        _cached_embeddings = embeddings
+        _cached_vs = vs_loaded
+        _cached_index_mtime = current_mtime
+        return _cached_embeddings, _cached_vs
+
+
+def invalidate_index_cache():
+    """Clear cached index so next request reloads from disk."""
+    global _cached_vs, _cached_embeddings, _cached_index_mtime
+    with _index_lock:
+        _cached_vs = None
+        _cached_embeddings = None
+        _cached_index_mtime = None
+
+
+@app.post("/api/ask", dependencies=[Depends(verify_api_key)])
 def ask_question(req: AskRequest):
     """Run RAG: retrieve relevant docs and generate an answer via Ollama."""
-    from pathlib import Path
+    from config import LLM_MODEL, TOP_K
 
-    from config import EMBEDDING_MODEL, LLM_MODEL, OLLAMA_BASE_URL, PERSIST_DIRECTORY
+    from rag_chain import answer_question
+    from vector_store import VectorStoreManager
 
     llm_model = req.model or LLM_MODEL
 
-    store_path = Path(PERSIST_DIRECTORY)
-    if not store_path.exists() or not (store_path / "index.faiss").exists():
+    embeddings, cached_vs = _get_cached_index()
+    if cached_vs is None:
         return {
             "answer": "No documents have been indexed yet. Please upload and index files first to get AI-powered answers.",
             "sources": [],
         }
 
     try:
-        from langchain_community.vectorstores import FAISS
-        from langchain_ollama import OllamaEmbeddings
-
-        from rag_chain import answer_question
-        from vector_store import VectorStoreManager
-
-        embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL, base_url=OLLAMA_BASE_URL)
         vs = VectorStoreManager()
-        vs._vector_store = FAISS.load_local(
-            str(store_path), embeddings, allow_dangerous_deserialization=True
+        vs._vector_store = cached_vs
+        retrieve_k = TOP_K * 3 if req.file_filter else TOP_K
+        retriever = vs.get_retriever(k=retrieve_k)
+        answer, docs = answer_question(
+            question=req.question, retriever=retriever, model=llm_model,
+            file_filter=req.file_filter,
         )
-        retriever = vs.get_retriever()
-        answer, docs = answer_question(question=req.question, retriever=retriever, model=llm_model)
-        sources = [
+
+        sources = list(dict.fromkeys(
             d.metadata.get("filename", d.metadata.get("source", "unknown"))
             for d in docs
-        ]
+        ))
         return {"answer": answer, "sources": sources}
     except Exception as e:
         return {"answer": f"Error generating response: {e}", "sources": [], "error": str(e)}
@@ -259,7 +319,7 @@ def _ensure_files_table():
 # File upload endpoint
 # ---------------------------------------------------------------------------
 
-@app.post("/api/files/upload")
+@app.post("/api/files/upload", dependencies=[Depends(verify_api_key)])
 async def upload_file(file: UploadFile = File(...)):
     """Upload a document, process it, and add to the vector index."""
     from config import EMBEDDING_MODEL, OLLAMA_BASE_URL, PERSIST_DIRECTORY
@@ -289,6 +349,16 @@ async def upload_file(file: UploadFile = File(...)):
 
         if not chunks:
             return {"error": "No content could be extracted from the file."}
+
+        # Deduplicate chunks with identical content
+        seen = set()
+        unique_chunks = []
+        for chunk in chunks:
+            key = chunk.page_content.strip()
+            if key not in seen:
+                seen.add(key)
+                unique_chunks.append(chunk)
+        chunks = unique_chunks
 
         # Update filename metadata to use original name
         for chunk in chunks:
@@ -326,6 +396,9 @@ async def upload_file(file: UploadFile = File(...)):
         if not add_indexed_file(file_id, file.filename, file_size, len(chunks), suffix):
             return {"error": "Failed to save file metadata to database."}
 
+        # Invalidate cached index so next /api/ask reloads with new documents
+        invalidate_index_cache()
+
         return {"file": file_meta}
 
     except Exception as e:
@@ -334,7 +407,7 @@ async def upload_file(file: UploadFile = File(...)):
         Path(tmp_path).unlink(missing_ok=True)
 
 
-@app.get("/api/files")
+@app.get("/api/files", dependencies=[Depends(verify_api_key)])
 def list_files():
     """List all indexed files."""
     _ensure_files_table()
@@ -342,7 +415,7 @@ def list_files():
     return {"files": files}
 
 
-@app.delete("/api/files/{file_id}")
+@app.delete("/api/files/{file_id}", dependencies=[Depends(verify_api_key)])
 def delete_file(file_id: str):
     """Remove a file from the metadata."""
     _ensure_files_table()

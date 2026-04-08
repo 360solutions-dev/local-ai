@@ -7,12 +7,14 @@ interface ApiResponse<T = Record<string, unknown>> {
 export async function apiPost<T = Record<string, unknown>>(
   path: string,
   body: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<ApiResponse<T>> {
   const res = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify(body),
+    signal,
   });
 
   const data = await res.json();

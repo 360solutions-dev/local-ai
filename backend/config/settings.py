@@ -6,14 +6,17 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get(
-    "DJANGO_SECRET_KEY",
-    "django-insecure-dev-key-change-in-production",
-)
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
+if not SECRET_KEY:
+    raise ValueError("DJANGO_SECRET_KEY environment variable is required. Set it in your .env file.")
 
-DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() == "true"
+DEBUG = os.environ.get("DJANGO_DEBUG", "false").lower() == "true"
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = [
+    h.strip()
+    for h in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    if h.strip()
+]
 
 # Apps
 INSTALLED_APPS = [
@@ -68,26 +71,23 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# Database
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://muhammad:admin@localhost:5432/llm-ops-backend",
-)
+# Database — requires DATABASE_URL env var (e.g. postgresql://user:pass@host:5432/dbname)
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is required. Set it in your .env file.")
 
-# Parse DATABASE_URL
-_db_parts = DATABASE_URL.replace("postgresql://", "").split("@")
-_user_pass = _db_parts[0].split(":")
-_host_db = _db_parts[1].split("/")
-_host_port = _host_db[0].split(":")
+# Parse DATABASE_URL using urllib to handle special characters correctly
+from urllib.parse import urlparse as _urlparse
 
+_db_url = _urlparse(DATABASE_URL)
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": _host_db[1] if len(_host_db) > 1 else "localai",
-        "USER": _user_pass[0],
-        "PASSWORD": _user_pass[1] if len(_user_pass) > 1 else "",
-        "HOST": _host_port[0],
-        "PORT": _host_port[1] if len(_host_port) > 1 else "5432",
+        "NAME": _db_url.path.lstrip("/") or "localai",
+        "USER": _db_url.username or "",
+        "PASSWORD": _db_url.password or "",
+        "HOST": _db_url.hostname or "localhost",
+        "PORT": str(_db_url.port or 5432),
     }
 }
 
@@ -120,7 +120,9 @@ SIMPLE_JWT = {
 
 # CORS
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
+    o.strip()
+    for o in os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    if o.strip()
 ]
 CORS_ALLOW_CREDENTIALS = True
 

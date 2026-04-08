@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.serializers import UserReadSerializer
+from core.permissions import IsAdminUser
 from notifications.models import Notification, NotificationPreference
 
 from .models import InstanceSettings
@@ -197,7 +198,7 @@ class ExportAllDataView(APIView):
 
 
 class ResetInstanceView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminUser]
 
     def post(self, request):
         if not request.data.get("confirm"):
@@ -225,7 +226,7 @@ class ResetInstanceView(APIView):
 
 
 class DeleteAllDataView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminUser]
 
     def post(self, request):
         if not request.data.get("confirm"):
@@ -247,7 +248,7 @@ class DeleteAllDataView(APIView):
 
 
 class FactoryResetView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminUser]
 
     def post(self, request):
         if not request.data.get("confirm"):

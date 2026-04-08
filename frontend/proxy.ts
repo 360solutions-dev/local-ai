@@ -22,8 +22,15 @@ export async function proxy(request: NextRequest) {
   const accessToken = request.cookies.get("access_token")?.value;
   const isAuthenticated = !!accessToken;
 
-  // Always check setup status from the API (not from cookie)
-  const isSetupComplete = await checkSetupStatus();
+  // Use cookie as cache to avoid hitting the API on every single request.
+  // Only call the API if cookie is missing (first visit or after factory reset).
+  const setupCookie = request.cookies.get("setup_complete")?.value;
+  let isSetupComplete: boolean | null;
+  if (setupCookie === "true") {
+    isSetupComplete = true;
+  } else {
+    isSetupComplete = await checkSetupStatus();
+  }
 
   // If Django is down, let request through
   if (isSetupComplete === null) {

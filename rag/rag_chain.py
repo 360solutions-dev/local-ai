@@ -41,6 +41,7 @@ def answer_question(
     base_url: str = OLLAMA_BASE_URL,
     model: str = LLM_MODEL,
     top_k: int = TOP_K,
+    file_filter: str | None = None,
 ) -> Tuple[str, List[Document]]:
     """
     Run RAG: retrieve relevant chunks, then generate an answer with Ollama.
@@ -50,6 +51,11 @@ def answer_question(
         docs = retriever.invoke(question)
     else:
         docs = retriever.get_relevant_documents(question)
+
+    # Filter to a specific file if requested
+    if file_filter:
+        docs = [d for d in docs if d.metadata.get("filename") == file_filter][:top_k]
+
     context = _format_docs(docs)
     chain = build_rag_chain(base_url=base_url, model=model)
     answer = chain.invoke({"context": context, "question": question})

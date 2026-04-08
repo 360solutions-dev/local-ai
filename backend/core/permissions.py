@@ -10,3 +10,12 @@ class IsSetupIncomplete(BasePermission):
         from accounts.models import User
 
         return not User.objects.exists()
+
+
+class IsAdminUser(BasePermission):
+    """Only allow access to staff/admin users."""
+
+    message = "Admin privileges required."
+
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated and request.user.is_staff

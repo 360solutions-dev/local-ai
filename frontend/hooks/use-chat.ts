@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiDelete, apiGet, apiPost, apiUpload } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "@/lib/api";
 
 export interface Conversation {
   id: number;
@@ -49,6 +49,7 @@ export function useConversationMessages(conversationId: number | null) {
       return res.data.messages;
     },
     enabled: !!conversationId,
+    staleTime: 0,
   });
 }
 
@@ -83,16 +84,22 @@ export function useSendMessage() {
       conversationId,
       content,
       model,
+      signal,
+      file_filter,
     }: {
       conversationId: number;
       content: string;
       model?: string;
+      signal?: AbortSignal;
+      file_filter?: string;
     }) => {
       const body: Record<string, unknown> = { content };
       if (model) body.model = model;
+      if (file_filter) body.file_filter = file_filter;
       const res = await apiPost<SendMessageResponse>(
         `/api/chat/conversations/${conversationId}/messages/`,
         body,
+        signal,
       );
       if (!res.ok) {
         throw new Error(
@@ -106,6 +113,29 @@ export function useSendMessage() {
       queryClient.invalidateQueries({
         queryKey: ["chat", "messages", variables.conversationId],
       });
+      queryClient.invalidateQueries({ queryKey: ["chat", "conversations"] });
+    },
+  });
+}
+
+export function useRenameConversation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ conversationId, title }: { conversationId: number; title: string }) => {
+      const res = await apiPatch<{ conversation: Conversation }>(
+        `/api/chat/conversations/${conversationId}/`,
+        { title },
+      );
+      if (!res.ok) {
+        throw new Error(
+          (res.data as unknown as { error?: { message?: string } })?.error
+            ?.message || "Failed to rename conversation.",
+        );
+      }
+      return res.data.conversation;
+    },
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["chat", "conversations"] });
     },
   });

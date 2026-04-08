@@ -2,20 +2,60 @@
 
 import json
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import List, Optional
 
 from config import DATABASE_URL
 
+# --- Connection pooling ---
+_pool = None
+
+
+def _get_pool():
+    global _pool
+    if _pool is None and DATABASE_URL:
+        import psycopg2.pool
+        _pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=1, maxconn=10, dsn=DATABASE_URL
+        )
+    return _pool
+
+
+@contextmanager
+def _get_connection_ctx():
+    """Context manager that borrows a connection from the pool and returns it."""
+    pool = _get_pool()
+    if pool is None:
+        yield None
+        return
+    conn = None
+    try:
+        conn = pool.getconn()
+        yield conn
+    except Exception:
+        yield None
+    finally:
+        if conn is not None:
+            pool.putconn(conn)
+
 
 def _get_connection():
-    if not DATABASE_URL:
+    """Legacy helper — returns a pooled connection. Caller MUST NOT close() it directly."""
+    pool = _get_pool()
+    if pool is None:
         return None
     try:
-        import psycopg2
-        return psycopg2.connect(DATABASE_URL)
+        return pool.getconn()
     except Exception:
         return None
+
+
+def _return_connection(conn):
+    """Return a connection back to the pool (replaces conn.close())."""
+    pool = _get_pool()
+    if pool is not None and conn is not None:
+        pool.putconn(conn)
 
 
 def init_db() -> bool:
@@ -39,7 +79,7 @@ def init_db() -> bool:
     except Exception:
         return False
     finally:
-        conn.close()
+        _return_connection(conn)
 
 
 def ensure_messages_table() -> bool:
@@ -65,7 +105,7 @@ def ensure_messages_table() -> bool:
     except Exception:
         return False
     finally:
-        conn.close()
+        _return_connection(conn)
 
 
 def ensure_conversations_schema() -> bool:
@@ -109,7 +149,7 @@ def ensure_conversations_schema() -> bool:
     except Exception:
         return False
     finally:
-        conn.close()
+        _return_connection(conn)
 
 
 def list_conversations() -> List[dict]:
@@ -127,7 +167,7 @@ def list_conversations() -> List[dict]:
     except Exception:
         return []
     finally:
-        conn.close()
+        _return_connection(conn)
 
 
 def create_conversation(title: Optional[str] = None) -> Optional[int]:
@@ -147,7 +187,7 @@ def create_conversation(title: Optional[str] = None) -> Optional[int]:
     except Exception:
         return None
     finally:
-        conn.close()
+        _return_connection(conn)
 
 
 def title_from_user_message(prompt: str, max_len: int = 72) -> str:
@@ -187,7 +227,7 @@ def maybe_update_conversation_title_from_first_user_message(
     except Exception:
         return False
     finally:
-        conn.close()
+        _return_connection(conn)
 
 
 def delete_conversation(conversation_id: int) -> bool:
@@ -204,7 +244,7 @@ def delete_conversation(conversation_id: int) -> bool:
     except Exception:
         return False
     finally:
-        conn.close()
+        _return_connection(conn)
 
 
 def get_messages_for_conversation(conversation_id: int) -> List[dict]:
@@ -248,7 +288,7 @@ def get_messages_for_conversation(conversation_id: int) -> List[dict]:
     except Exception:
         return []
     finally:
-        conn.close()
+        _return_connection(conn)
 
 
 def get_all_messages() -> List[dict]:
@@ -292,7 +332,7 @@ def get_all_messages() -> List[dict]:
     except Exception:
         return []
     finally:
-        conn.close()
+        _return_connection(conn)
 
 
 def add_message(
@@ -366,7 +406,7 @@ def add_message(
     except Exception as e:
         return (None, str(e))
     finally:
-        conn.close()
+        _return_connection(conn)
 
 
 def delete_message(message_id: int) -> bool:
@@ -383,7 +423,7 @@ def delete_message(message_id: int) -> bool:
     except Exception:
         return False
     finally:
-        conn.close()
+        _return_connection(conn)
 
 
 def delete_turn(conversation_id: int, turn_id: str) -> bool:
@@ -404,7 +444,7 @@ def delete_turn(conversation_id: int, turn_id: str) -> bool:
     except Exception:
         return False
     finally:
-        conn.close()
+        _return_connection(conn)
 
 
 def log_query(query_text: str) -> bool:
@@ -423,7 +463,7 @@ def log_query(query_text: str) -> bool:
     except Exception:
         return False
     finally:
-        conn.close()
+        _return_connection(conn)
 
 
 # ---------------------------------------------------------------------------
@@ -454,7 +494,7 @@ def ensure_indexed_files_table() -> bool:
     except Exception:
         return False
     finally:
-        conn.close()
+        _return_connection(conn)
 
 
 def list_indexed_files() -> List[dict]:
@@ -474,7 +514,7 @@ def list_indexed_files() -> List[dict]:
     except Exception:
         return []
     finally:
-        conn.close()
+        _return_connection(conn)
 
 
 def add_indexed_file(file_id: str, name: str, size: int, chunks: int, file_type: str) -> bool:
@@ -493,7 +533,7 @@ def add_indexed_file(file_id: str, name: str, size: int, chunks: int, file_type:
     except Exception:
         return False
     finally:
-        conn.close()
+        _return_connection(conn)
 
 
 def delete_indexed_file(file_id: str) -> bool:
@@ -510,4 +550,4 @@ def delete_indexed_file(file_id: str) -> bool:
     except Exception:
         return False
     finally:
-        conn.close()
+        _return_connection(conn)

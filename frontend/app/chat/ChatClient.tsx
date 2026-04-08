@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Ellipsis, Pencil, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import {
   useConversations,
@@ -15,6 +16,7 @@ import {
   useCreateConversation,
   useSendMessage,
   useDeleteConversation,
+  useRenameConversation,
   useIndexedFiles,
   useUploadFile,
   useDeleteFile,
@@ -79,7 +81,11 @@ export default function ChatClient() {
   const [modelOverlayOpen, setModelOverlayOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [input, setInput] = useState("");
+  const [showFileMention, setShowFileMention] = useState(false);
+  const [fileMentionQuery, setFileMentionQuery] = useState("");
+  const [taggedFile, setTaggedFile] = useState<{ id: string; name: string } | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Optimistic messages shown before server confirms
   const [pendingMessages, setPendingMessages] = useState<
@@ -92,6 +98,10 @@ export default function ChatClient() {
   const createConversation = useCreateConversation();
   const sendMessage = useSendMessage();
   const deleteConversation = useDeleteConversation();
+  const renameConversation = useRenameConversation();
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
+  const [renamingId, setRenamingId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const { data: indexedFiles = [], isLoading: filesLoading } = useIndexedFiles();
   const uploadFile = useUploadFile();
   const deleteFile = useDeleteFile();
@@ -126,6 +136,32 @@ export default function ChatClient() {
     scrollToBottom();
   }, [messages, pendingMessages, scrollToBottom]);
 
+  // Handle input changes for @file autocomplete
+  function handleInputChange(value: string) {
+    setInput(value);
+    const atMatch = value.match(/@(\S*)$/);
+    if (atMatch) {
+      setShowFileMention(true);
+      setFileMentionQuery(atMatch[1].toLowerCase());
+    } else {
+      setShowFileMention(false);
+      setFileMentionQuery("");
+    }
+  }
+
+  // Select a file from autocomplete → set as tag chip
+  function insertFileMention(file: { id: string; name: string }) {
+    setTaggedFile(file);
+    setInput(input.replace(/@\S*$/, ""));
+    setShowFileMention(false);
+    setFileMentionQuery("");
+  }
+
+  // Filtered file list for autocomplete
+  const mentionFiles = indexedFiles.filter((f) =>
+    f.name.toLowerCase().includes(fileMentionQuery),
+  );
+
   async function handleSend() {
     const text = input.trim();
     if (!text) return;
@@ -143,26 +179,66 @@ export default function ChatClient() {
       }
     }
 
+    // Use tagged file as filter
+    const fileFilter = taggedFile?.name;
+    const displayText = taggedFile ? `@${taggedFile.name} ${text}` : text;
+
     // Optimistic: show user message immediately
     const tempId = `pending-${Date.now()}`;
     setPendingMessages((prev) => [
       ...prev,
-      { id: tempId, role: "user", content: text },
+      { id: tempId, role: "user", content: displayText },
       { id: `${tempId}-thinking`, role: "assistant", content: "Thinking..." },
     ]);
     setInput("");
+    setTaggedFile(null);
+    setShowFileMention(false);
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     sendMessage.mutate(
-      { conversationId: chatId, content: text, model: selectedModel || undefined },
+      {
+        conversationId: chatId,
+        content: text,
+        model: selectedModel || undefined,
+        signal: controller.signal,
+        file_filter: fileFilter,
+      },
       {
         onSettled: () => {
           setPendingMessages([]);
+          abortControllerRef.current = null;
         },
       },
     );
   }
 
+  function handleStop() {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setPendingMessages([]);
+  }
+
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (showFileMention) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowFileMention(false);
+        return;
+      }
+      // Don't send while autocomplete is visible on Enter
+      if (e.key === "Enter") {
+        e.preventDefault();
+        // Select first matching file
+        if (mentionFiles.length > 0) {
+          insertFileMention(mentionFiles[0]);
+        }
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -179,8 +255,8 @@ export default function ChatClient() {
     }
   }
 
-  function handleDeleteConversation(e: React.MouseEvent, convId: number) {
-    e.stopPropagation();
+  function handleDeleteConversation(convId: number) {
+    setMenuOpenId(null);
     deleteConversation.mutate(convId, {
       onSuccess: () => {
         if (activeChatId === convId) {
@@ -190,6 +266,29 @@ export default function ChatClient() {
       },
     });
   }
+
+  function handleStartRename(convId: number, currentTitle: string) {
+    setMenuOpenId(null);
+    setRenamingId(convId);
+    setRenameValue(currentTitle);
+  }
+
+  function handleSubmitRename(convId: number) {
+    const trimmed = renameValue.trim();
+    if (trimmed) {
+      renameConversation.mutate({ conversationId: convId, title: trimmed });
+    }
+    setRenamingId(null);
+    setRenameValue("");
+  }
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (menuOpenId === null) return;
+    const handler = () => setMenuOpenId(null);
+    window.addEventListener("click", handler);
+    return () => window.removeEventListener("click", handler);
+  }, [menuOpenId]);
 
 
   // Group conversations by date
@@ -303,19 +402,60 @@ export default function ChatClient() {
                       key={c.id}
                       role="button"
                       tabIndex={0}
-                      className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg text-[0.85rem] cursor-pointer transition-all mb-px ${activeChatId === c.id ? "bg-accent/15 text-accent" : "text-text-muted hover:bg-bg-card hover:text-text"}`}
+                      className={`group relative flex items-center gap-2.5 px-3 py-2 rounded-lg text-[0.85rem] cursor-pointer transition-all mb-px ${activeChatId === c.id ? "bg-accent/15 text-accent" : "text-text-muted hover:bg-bg-card hover:text-text"}`}
                       onClick={() => { setActiveChatId(c.id); setPendingMessages([]); }}
                       onKeyDown={(e) => e.key === "Enter" && setActiveChatId(c.id)}
                     >
                       <span className="text-[0.8rem] opacity-60">💬</span>
-                      <span className="flex-1 whitespace-nowrap overflow-hidden text-ellipsis">{c.title}</span>
-                      <span
-                        className="opacity-0 group-hover:opacity-100 text-[0.75rem] text-text-dim cursor-pointer px-1 py-0.5 rounded transition-all hover:text-danger hover:bg-danger/10"
-                        onClick={(e) => handleDeleteConversation(e, c.id)}
-                        role="presentation"
-                      >
-                        ✕
-                      </span>
+                      {renamingId === c.id ? (
+                        <input
+                          className="flex-1 bg-bg-card border border-border-accent rounded px-2 py-0.5 text-[0.82rem] text-text outline-none"
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            e.stopPropagation();
+                            if (e.key === "Enter") handleSubmitRename(c.id);
+                            if (e.key === "Escape") { setRenamingId(null); setRenameValue(""); }
+                          }}
+                          onBlur={() => handleSubmitRename(c.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          autoFocus
+                        />
+                      ) : (
+                        <span className="flex-1 whitespace-nowrap overflow-hidden text-ellipsis">{c.title}</span>
+                      )}
+                      {renamingId !== c.id && (
+                        <span
+                          className="opacity-0 group-hover:opacity-100 text-[0.85rem] text-text-dim cursor-pointer px-1 py-0.5 rounded transition-all hover:text-accent hover:bg-accent/10"
+                          onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === c.id ? null : c.id); }}
+                          role="presentation"
+                        >
+                          <Ellipsis size={16} />
+                        </span>
+                      )}
+                      {menuOpenId === c.id && (
+                        <div
+                          className="absolute right-0 top-full mt-1 z-50 bg-bg-elevated border border-border rounded-lg shadow-lg py-1 min-w-[140px] animate-[fadeIn_0.15s_ease]"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-[0.82rem] text-text-muted bg-transparent border-none cursor-pointer transition-colors hover:bg-bg-card hover:text-text text-left"
+                            onClick={() => handleStartRename(c.id, c.title)}
+                          >
+                            <Pencil size={14} />
+                            Rename
+                          </button>
+                          <button
+                            type="button"
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-[0.82rem] text-danger bg-transparent border-none cursor-pointer transition-colors hover:bg-danger/10 text-left"
+                            onClick={() => handleDeleteConversation(c.id)}
+                          >
+                            <Trash2 size={14} />
+                            Delete
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -409,26 +549,69 @@ export default function ChatClient() {
           {ollamaModels.length > 0 && (
           <div className="px-8 py-4 pb-6 border-t border-border bg-bg-elevated">
             <div className="max-w-[720px] mx-auto relative">
-              <textarea
-                className="w-full py-3.5 pl-5 pr-[4.5rem] bg-bg-card border border-border rounded-xl text-text font-body text-[0.95rem] outline-none resize-none transition-colors min-h-[48px] max-h-[150px] leading-relaxed placeholder:text-text-dim focus:border-border-focus"
-                placeholder={t("chat.askAboutFiles")}
-                rows={1}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={onKeyDown}
-                disabled={isSending}
-              />
+              {/* @file autocomplete dropdown */}
+              {showFileMention && mentionFiles.length > 0 && (
+                <div className="absolute bottom-full mb-1 left-0 right-0 bg-bg-elevated border border-border rounded-lg shadow-lg py-1 z-50 max-h-[200px] overflow-y-auto">
+                  <div className="px-3 py-1.5 text-[0.68rem] font-mono text-text-dim uppercase tracking-wider">Mention a file</div>
+                  {mentionFiles.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-[0.82rem] text-text-muted bg-transparent border-none cursor-pointer transition-colors hover:bg-bg-card hover:text-text text-left"
+                      onMouseDown={(e) => { e.preventDefault(); insertFileMention(f); }}
+                    >
+                      <span className="text-[0.85rem]">{f.type === ".pdf" ? "📄" : f.type === ".docx" ? "📝" : "📃"}</span>
+                      <span className="flex-1 truncate">{f.name}</span>
+                      <span className="font-mono text-[0.65rem] text-text-dim">{f.chunks} chunks</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-2 w-full bg-bg-card border border-border rounded-xl min-h-[48px] max-h-[150px] pr-[4.5rem] pl-3 py-1 focus-within:border-border-focus transition-colors">
+                {taggedFile && (
+                  <span className="inline-flex items-center gap-1.5 bg-accent/15 text-accent border border-accent/30 rounded-md px-2.5 py-1 text-[0.78rem] font-mono whitespace-nowrap shrink-0">
+                    📄 @{taggedFile.name}
+                    <button
+                      type="button"
+                      className="bg-transparent border-none text-accent/60 cursor-pointer text-[0.7rem] p-0 ml-0.5 hover:text-accent"
+                      onClick={() => setTaggedFile(null)}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
+                <textarea
+                  className="flex-1 py-2.5 bg-transparent text-text font-body text-[0.95rem] outline-none resize-none leading-relaxed placeholder:text-text-dim border-none"
+                  placeholder={taggedFile ? "Ask about this file..." : t("chat.askAboutFiles")}
+                  rows={1}
+                  value={input}
+                  onChange={(e) => handleInputChange(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  readOnly={isSending}
+                />
+              </div>
               <div className="absolute right-2.5 bottom-2.5 flex gap-1">
                 <button type="button" className="w-[34px] h-[34px] rounded-lg border border-border bg-bg-elevated text-text-muted cursor-pointer flex items-center justify-center text-[0.9rem] transition-all hover:border-accent hover:text-accent" title={t("chat.attachFile")} onClick={() => setFilePanelOpen((o) => !o)}>📎</button>
-                <button
-                  type="button"
-                  className="w-[34px] h-[34px] rounded-lg border-none bg-accent text-bg cursor-pointer flex items-center justify-center text-[0.9rem] transition-all hover:opacity-85 disabled:opacity-50"
-                  title={t("chat.send")}
-                  onClick={handleSend}
-                  disabled={isSending || !input.trim()}
-                >
-                  ↑
-                </button>
+                {isSending ? (
+                  <button
+                    type="button"
+                    className="w-[34px] h-[34px] rounded-lg border-none bg-danger text-white cursor-pointer flex items-center justify-center transition-all hover:opacity-85"
+                    title="Stop generating"
+                    onClick={handleStop}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect width="14" height="14" rx="2" /></svg>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="w-[34px] h-[34px] rounded-lg border-none bg-accent text-bg cursor-pointer flex items-center justify-center text-[0.9rem] transition-all hover:opacity-85 disabled:opacity-50"
+                    title={t("chat.send")}
+                    onClick={handleSend}
+                    disabled={!input.trim()}
+                  >
+                    ↑
+                  </button>
+                )}
               </div>
             </div>
             <div className="text-center mt-2 font-mono text-[0.68rem] text-text-dim">{t("chat.enterToSend")}</div>

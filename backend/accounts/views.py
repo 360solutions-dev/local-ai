@@ -18,6 +18,11 @@ from .serializers import (
 )
 
 
+import os
+
+_COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
+
+
 def _set_auth_cookies(response, user):
     """Generate JWT pair and set as httpOnly cookies on the response."""
     refresh = RefreshToken.for_user(user)
@@ -26,7 +31,7 @@ def _set_auth_cookies(response, user):
         str(refresh.access_token),
         httponly=True,
         samesite="Lax",
-        secure=False,  # Set True in production with HTTPS
+        secure=_COOKIE_SECURE,
         max_age=3600,
         path="/",
     )
@@ -35,7 +40,7 @@ def _set_auth_cookies(response, user):
         str(refresh),
         httponly=True,
         samesite="Lax",
-        secure=False,
+        secure=_COOKIE_SECURE,
         max_age=7 * 24 * 3600,
         path="/api/auth/token/refresh/",
     )

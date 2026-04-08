@@ -13,12 +13,20 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .serializers import CreateConversationSerializer, SendMessageSerializer
+from .serializers import CreateConversationSerializer, RenameConversationSerializer, SendMessageSerializer
 
 logger = logging.getLogger(__name__)
 
 # RAG service URL (runs in a separate Docker container)
 RAG_SERVICE_URL = os.environ.get("RAG_SERVICE_URL", "http://localhost:8080")
+RAG_API_KEY = os.environ.get("RAG_API_KEY", "")
+
+def _rag_headers():
+    """Return headers for RAG service requests, including API key auth."""
+    headers = {}
+    if RAG_API_KEY:
+        headers["X-API-Key"] = RAG_API_KEY
+    return headers
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +137,27 @@ class ConversationListCreateView(APIView):
 class ConversationDeleteView(APIView):
     permission_classes = [IsAuthenticated]
 
+    def patch(self, request, conversation_id):
+        """Rename a conversation."""
+        serializer = RenameConversationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        title = serializer.validated_data["title"]
+        _ensure_tables()
+        with connection.cursor() as cur:
+            cur.execute(
+                "UPDATE conversations SET title = %s WHERE id = %s RETURNING id, title, created_at",
+                [title, conversation_id],
+            )
+            row = cur.fetchone()
+        if not row:
+            return Response(
+                {"error": {"code": "NOT_FOUND", "message": "Conversation not found."}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response({
+            "conversation": {"id": row[0], "title": row[1] or "Untitled", "created_at": row[2].isoformat()},
+        })
+
     def delete(self, request, conversation_id):
         """Delete a conversation and all its messages."""
         _ensure_tables()
@@ -203,13 +232,16 @@ class ConversationMessagesView(APIView):
 
         # Generate AI response via RAG service (separate container)
         model = serializer.validated_data.get("model") or None
+        file_filter = serializer.validated_data.get("file_filter") or None
         ai_error = None
         try:
             rag_url = urljoin(RAG_SERVICE_URL, "/api/ask")
             payload = {"question": content}
             if model:
                 payload["model"] = model
-            resp = requests.post(rag_url, json=payload, timeout=300)
+            if file_filter:
+                payload["file_filter"] = file_filter
+            resp = requests.post(rag_url, json=payload, headers=_rag_headers(), timeout=300)
             resp.raise_for_status()
             rag_data = resp.json()
             answer = rag_data.get("answer", "No response from RAG service.")
@@ -250,7 +282,7 @@ class ModelListView(APIView):
         """List installed Ollama models."""
         try:
             rag_url = urljoin(RAG_SERVICE_URL, "/api/models")
-            resp = requests.get(rag_url, timeout=10)
+            resp = requests.get(rag_url, headers=_rag_headers(), timeout=10)
             resp.raise_for_status()
             return Response(resp.json())
         except Exception as e:
@@ -274,7 +306,7 @@ class ModelPullView(APIView):
         def stream():
             try:
                 rag_url = urljoin(RAG_SERVICE_URL, "/api/models/pull")
-                resp = requests.post(rag_url, json={"name": name}, timeout=600, stream=True)
+                resp = requests.post(rag_url, json={"name": name}, headers=_rag_headers(), timeout=600, stream=True)
                 resp.raise_for_status()
                 for line in resp.iter_lines():
                     if line:
@@ -295,7 +327,7 @@ class ModelDeleteView(APIView):
         """Delete a model from Ollama."""
         try:
             rag_url = urljoin(RAG_SERVICE_URL, f"/api/models/{model_name}")
-            resp = requests.delete(rag_url, timeout=30)
+            resp = requests.delete(rag_url, headers=_rag_headers(), timeout=30)
             resp.raise_for_status()
             return Response(resp.json())
         except Exception as e:
@@ -333,7 +365,7 @@ class FileListView(APIView):
         """List indexed files."""
         try:
             rag_url = urljoin(RAG_SERVICE_URL, "/api/files")
-            resp = requests.get(rag_url, timeout=10)
+            resp = requests.get(rag_url, headers=_rag_headers(), timeout=10)
             resp.raise_for_status()
             return Response(resp.json())
         except Exception as e:
@@ -355,7 +387,7 @@ class FileUploadView(APIView):
         try:
             rag_url = urljoin(RAG_SERVICE_URL, "/api/files/upload")
             files = {"file": (uploaded_file.name, uploaded_file.read(), uploaded_file.content_type)}
-            resp = requests.post(rag_url, files=files, timeout=300)
+            resp = requests.post(rag_url, files=files, headers=_rag_headers(), timeout=300)
             resp.raise_for_status()
             data = resp.json()
             if "error" in data:
@@ -379,7 +411,7 @@ class FileDeleteView(APIView):
         """Delete a file from the index."""
         try:
             rag_url = urljoin(RAG_SERVICE_URL, f"/api/files/{file_id}")
-            resp = requests.delete(rag_url, timeout=10)
+            resp = requests.delete(rag_url, headers=_rag_headers(), timeout=10)
             resp.raise_for_status()
             return Response(resp.json())
         except Exception as e:

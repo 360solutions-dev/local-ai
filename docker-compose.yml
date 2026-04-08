@@ -44,7 +44,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       DJANGO_DEBUG: ${DJANGO_DEBUG}
+      ALLOWED_HOSTS: localhost,127.0.0.1,django
       RAG_SERVICE_URL: http://rag:8080
+      RAG_API_KEY: ${RAG_API_KEY}
     ports:
       - "8000:8000"
     volumes:
@@ -79,6 +81,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       OLLAMA_BASE_URL: http://ollama:11434
+      RAG_API_KEY: ${RAG_API_KEY}
     ports:
       - "8501:8501"
       - "8080:8080"
