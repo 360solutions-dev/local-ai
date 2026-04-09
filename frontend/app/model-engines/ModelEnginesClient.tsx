@@ -1,55 +1,31 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "@/lib/i18n";
-import { useOllamaModels, useDeleteModel, useSystemHealth, useTestProvider } from "@/hooks/use-chat";
+import {
+  useOllamaModels,
+  useDeleteModel,
+  useSystemHealth,
+  useTestProvider,
+  useProviders,
+  useCreateProvider,
+  useUpdateProvider,
+
+  useSetDefaultProvider,
+  useModelConfig,
+  useUpdateModelConfig,
+  useHasActiveProvider,
+} from "@/hooks/use-chat";
+import type { ProviderData } from "@/hooks/use-chat";
 import { useDownload } from "@/lib/download-provider";
 
-interface ProviderDef {
-  name: string;
-  icon: string;
-  desc: string;
-  endpoint: string;
-  type: "ollama" | "openai";
-  isDefault?: boolean;
-  meta: { label: string; value: string; accent?: boolean }[];
-}
-
-const PROVIDER_DEFS: ProviderDef[] = [
-  {
-    name: "Ollama",
-    icon: "\uD83E\uDD99",
-    desc: "Local model runner. Pull and manage models with simple commands. GPU and CPU support.",
-    endpoint: "http://localhost:11434",
-    type: "ollama",
-    isDefault: true,
-    meta: [
-      { label: "Endpoint", value: "localhost:11434" },
-      { label: "Models", value: "—" },
-      { label: "GPU", value: "Active", accent: true },
-    ],
-  },
-  {
-    name: "LM Studio",
-    icon: "\uD83D\uDDA5\uFE0F",
-    desc: "GUI-based model manager with an OpenAI-compatible server. Great for experimentation.",
-    endpoint: "http://localhost:1234",
-    type: "openai",
-    meta: [
-      { label: "Endpoint", value: "localhost:1234" },
-      { label: "Models", value: "Via LM Studio UI" },
-      { label: "Protocol", value: "OpenAI-compat" },
-    ],
-  },
-];
-
-const AVAILABLE_PROVIDERS: ProviderDef[] = [
+const AVAILABLE_PROVIDER_TEMPLATES = [
   {
     name: "vLLM",
     icon: "\u26A1",
     desc: "High-throughput serving with PagedAttention. Best for multi-user setups with high concurrency.",
     endpoint: "http://localhost:8000",
-    type: "openai",
+    type: "openai" as const,
     meta: [
       { label: "Default Port", value: "8000" },
       { label: "GPU Required", value: "Yes" },
@@ -60,7 +36,7 @@ const AVAILABLE_PROVIDERS: ProviderDef[] = [
     icon: "\uD83D\uDD27",
     desc: "Lightweight C++ inference. Runs on CPU, Apple Silicon, and CUDA with minimal overhead.",
     endpoint: "http://localhost:8080",
-    type: "openai",
+    type: "openai" as const,
     meta: [
       { label: "Default Port", value: "8080" },
       { label: "GPU Required", value: "No" },
@@ -71,7 +47,7 @@ const AVAILABLE_PROVIDERS: ProviderDef[] = [
     icon: "\uD83C\uDF10",
     desc: "Connect any OpenAI-compatible API server. Use your own inference setup with a custom URL.",
     endpoint: "",
-    type: "openai",
+    type: "openai" as const,
     meta: [{ label: "Protocol", value: "/v1/chat/completions" }],
   },
 ];
@@ -86,38 +62,53 @@ export default function ModelEnginesClient() {
   const [toast, setToast] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { status: string; latency?: string; error?: string }>>({});
 
-  const [chatModel, setChatModel] = useState("llama3.1:8b (Ollama)");
-  const [embeddingModel, setEmbeddingModel] = useState("nomic-embed-text (Ollama)");
-  const [ttsModel, setTtsModel] = useState("piper-en-amy (Built-in)");
+  // Connect / Configure modal state
+  const [showConnectModal, setShowConnectModal] = useState(false);
+  const [editingProvider, setEditingProvider] = useState<ProviderData | null>(null);
+  const [connectForm, setConnectForm] = useState({ name: "", endpoint: "", type: "openai" as "ollama" | "openai", icon: "🌐", description: "" });
+
+  // Feature model mapping state
+  const [chatModel, setChatModel] = useState("");
+  const [embeddingModel, setEmbeddingModel] = useState("");
+  const [ttsModel, setTtsModel] = useState("");
 
   // Real API hooks
   const { data: ollamaModels = [], isLoading: modelsLoading } = useOllamaModels();
   const { data: health } = useSystemHealth();
+  const { data: providers = [], isLoading: providersLoading } = useProviders();
+  const { data: modelConfig } = useModelConfig();
   const deleteModelMutation = useDeleteModel();
   const testProviderMutation = useTestProvider();
+  const createProviderMutation = useCreateProvider();
+  const updateProviderMutation = useUpdateProvider();
+
+  const setDefaultProviderMutation = useSetDefaultProvider();
+  const updateModelConfigMutation = useUpdateModelConfig();
   const { download, isPulling, startPull } = useDownload();
 
-  // Build connected providers with real status
-  const connectedProviders = useMemo(() => {
-    return PROVIDER_DEFS.map((p) => {
-      const isOllama = p.name === "Ollama";
-      const connected = isOllama ? (health?.ollama ?? false) : false;
-      const meta = p.meta.map((m) => {
-        if (isOllama && m.label === "Models") {
-          return { ...m, value: `${ollamaModels.length} installed`, accent: ollamaModels.length > 0 };
-        }
-        return m;
-      });
-      return { ...p, connected, meta };
-    });
-  }, [health, ollamaModels]);
+  // Sync model config from API into local state
+  useEffect(() => {
+    if (modelConfig) {
+      if (modelConfig.chat_model) setChatModel(modelConfig.chat_model);
+      if (modelConfig.embedding_model) setEmbeddingModel(modelConfig.embedding_model);
+      if (modelConfig.tts_model) setTtsModel(modelConfig.tts_model);
+    }
+  }, [modelConfig]);
+
+  // Available providers = templates that are NOT already connected
+  const connectedNames = new Set(providers.map((p) => p.name));
+  const availableProviders = AVAILABLE_PROVIDER_TEMPLATES.filter(
+    (tpl) => !connectedNames.has(tpl.name)
+  );
+
+  const hasActiveProvider = useHasActiveProvider();
 
   function showToastMsg(msg: string) {
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
   }
 
-  function testConnection(provider: ProviderDef) {
+  function testConnection(provider: ProviderData) {
     setTestResults((prev) => ({ ...prev, [provider.name]: { status: "loading" } }));
     testProviderMutation.mutate(
       { endpoint: provider.endpoint, type: provider.type },
@@ -128,11 +119,17 @@ export default function ModelEnginesClient() {
               ...prev,
               [provider.name]: { status: "success", latency: `${data.latency_ms}ms` },
             }));
+            if (!provider.is_connected) {
+              updateProviderMutation.mutate({ id: provider.id, is_connected: true });
+            }
           } else {
             setTestResults((prev) => ({
               ...prev,
               [provider.name]: { status: "error", error: data.error || "Connection failed" },
             }));
+            if (provider.is_connected) {
+              updateProviderMutation.mutate({ id: provider.id, is_connected: false });
+            }
           }
         },
         onError: () => {
@@ -145,10 +142,105 @@ export default function ModelEnginesClient() {
     );
   }
 
+  function openConnectModal(template: typeof AVAILABLE_PROVIDER_TEMPLATES[0]) {
+    setEditingProvider(null);
+    setConnectForm({
+      name: template.name,
+      endpoint: template.endpoint,
+      type: template.type,
+      icon: template.icon,
+      description: template.desc,
+    });
+    setShowConnectModal(true);
+  }
+
+  function openConfigureModal(provider: ProviderData) {
+    setEditingProvider(provider);
+    setConnectForm({
+      name: provider.name,
+      endpoint: provider.endpoint,
+      type: provider.type,
+      icon: provider.icon,
+      description: provider.description,
+    });
+    setShowConnectModal(true);
+  }
+
+  function handleConnectSubmit() {
+    if (!connectForm.endpoint.trim()) return;
+
+    if (editingProvider) {
+      updateProviderMutation.mutate(
+        {
+          id: editingProvider.id,
+          name: connectForm.name,
+          endpoint: connectForm.endpoint,
+          type: connectForm.type,
+          icon: connectForm.icon,
+          description: connectForm.description,
+        },
+        {
+          onSuccess: () => {
+            showToastMsg(t("modelEngines.providerUpdated"));
+            setShowConnectModal(false);
+          },
+        },
+      );
+    } else {
+      createProviderMutation.mutate(
+        {
+          name: connectForm.name,
+          endpoint: connectForm.endpoint,
+          type: connectForm.type,
+          icon: connectForm.icon,
+          description: connectForm.description,
+        },
+        {
+          onSuccess: () => {
+            showToastMsg(t("modelEngines.providerConnected"));
+            setShowConnectModal(false);
+          },
+        },
+      );
+    }
+  }
+
+  function handleSetDefault(provider: ProviderData) {
+    setDefaultProviderMutation.mutate(provider.id, {
+      onSuccess: () => showToastMsg(t("modelEngines.defaultUpdatedMsg")),
+    });
+  }
+
+  function handleDisconnect(provider: ProviderData) {
+    updateProviderMutation.mutate(
+      { id: provider.id, is_connected: false },
+      { onSuccess: () => showToastMsg(t("modelEngines.providerDisconnected")) },
+    );
+  }
+
+  function handleReconnect(provider: ProviderData) {
+    updateProviderMutation.mutate(
+      { id: provider.id, is_connected: true },
+      { onSuccess: () => showToastMsg(t("modelEngines.providerConnected")) },
+    );
+  }
+
+  function handleSaveModelConfig() {
+    updateModelConfigMutation.mutate(
+      {
+        chat_model: chatModel,
+        embedding_model: embeddingModel,
+        tts_model: ttsModel,
+      },
+      {
+        onSuccess: () => showToastMsg(t("modelEngines.configSaved")),
+      },
+    );
+  }
+
   function validateModelName(name: string): string | null {
     if (!name) return t("modelEngines.modelNameRequired");
     if (name.length > 200) return t("modelEngines.modelNameTooLong");
-    // Ollama format: [namespace/]model[:tag]
     const pattern = /^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?(\/[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?)?(:[a-zA-Z0-9][a-zA-Z0-9._-]*)?$/;
     if (!pattern.test(name)) return t("modelEngines.invalidModelName");
     return null;
@@ -158,14 +250,12 @@ export default function ModelEnginesClient() {
     const name = pullInput.trim();
     if (!name || isPulling || isValidating) return;
 
-    // Client-side format validation
     const error = validateModelName(name);
     if (error) {
       setPullError(error);
       return;
     }
 
-    // Server-side: check if model exists in Ollama library
     setIsValidating(true);
     setPullError(null);
     try {
@@ -189,14 +279,12 @@ export default function ModelEnginesClient() {
 
   function handleRemoveModel(modelName: string) {
     deleteModelMutation.mutate(modelName, {
-      onSuccess: () => {
-        showToastMsg(t("modelEngines.modelRemoved"));
-      },
-      onError: (err) => {
-        showToastMsg(`Failed to remove: ${err.message}`);
-      },
+      onSuccess: () => showToastMsg(t("modelEngines.modelRemoved")),
+      onError: (err) => showToastMsg(`Failed to remove: ${err.message}`),
     });
   }
+
+  const isSubmitting = createProviderMutation.isPending || updateProviderMutation.isPending;
 
   return (
     <>
@@ -210,12 +298,23 @@ export default function ModelEnginesClient() {
         </div>
         <button
           onClick={() => { setShowPullModal(true); setPullError(null); }}
-          disabled={isPulling}
+          disabled={isPulling || !hasActiveProvider}
           className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-bg border-none rounded-lg font-body text-[0.9rem] font-semibold cursor-pointer transition-all shadow-[0_0_20px_rgba(52,211,153,0.15)] hover:-translate-y-0.5 hover:shadow-[0_0_40px_rgba(52,211,153,0.3)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isPulling ? t("modelEngines.downloading") : t("modelEngines.pullModel")}
         </button>
       </div>
+
+      {/* No active provider warning */}
+      {!providersLoading && !hasActiveProvider && (
+        <div className="mb-6 bg-accent-warm/10 border border-accent-warm/30 rounded-xl p-4 flex items-center gap-3">
+          <span className="text-accent-warm text-lg">&#9888;</span>
+          <div>
+            <p className="text-[0.9rem] font-medium text-accent-warm">{t("modelEngines.noProviderWarning")}</p>
+            <p className="text-[0.8rem] text-text-muted font-light">{t("modelEngines.noProviderWarningDesc")}</p>
+          </div>
+        </div>
+      )}
 
       {/* Pull progress bar */}
       {download && (
@@ -238,141 +337,198 @@ export default function ModelEnginesClient() {
         {t("modelEngines.connectedProviders")}
       </div>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
-        {connectedProviders.map((p) => (
-          <div
-            key={p.name}
-            className={`bg-bg-card border rounded-[14px] p-6 relative overflow-hidden transition-all hover:border-border-accent ${
-              p.connected ? "border-border-accent" : "border-border"
-            }`}
-          >
-            {p.connected && (
-              <div className="absolute top-0 left-0 right-0 h-0.5 bg-accent" />
-            )}
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-[10px] flex items-center justify-center text-xl bg-bg border border-border">
-                  {p.icon}
-                </div>
-                <span className="text-[1.05rem] font-semibold">{p.name}</span>
-              </div>
-              {p.isDefault && p.connected ? (
-                <span className="font-mono text-[0.68rem] px-2 py-0.5 rounded bg-accent text-bg font-semibold">
-                  {t("common.default")}
-                </span>
-              ) : p.connected ? (
-                <span className="font-mono text-[0.68rem] px-2 py-0.5 rounded text-accent bg-accent/15">
-                  {t("common.connected")}
-                </span>
-              ) : (
-                <span className="font-mono text-[0.68rem] px-2 py-0.5 rounded text-text-dim bg-bg border border-border">
-                  {t("common.notConnected")}
-                </span>
-              )}
-            </div>
-            <p className="text-text-muted text-[0.85rem] font-light leading-relaxed mb-4">
-              {p.desc}
-            </p>
-            <div className="flex gap-6 mb-4">
-              {p.meta.map((m) => (
-                <div key={m.label} className="flex flex-col gap-0.5">
-                  <span className="font-mono text-[0.65rem] text-text-dim tracking-wide uppercase">
-                    {m.label}
-                  </span>
-                  <span className={`text-[0.85rem] font-medium ${m.accent ? "text-accent" : ""}`}>
-                    {m.value}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => testConnection(p)}
-                disabled={testProviderMutation.isPending}
-                className="inline-flex items-center gap-2 px-3 py-1.5 bg-transparent text-text-muted border border-border rounded-md font-body text-[0.82rem] font-medium cursor-pointer transition-all hover:border-text-muted hover:text-text disabled:opacity-50"
+        {providersLoading ? (
+          <div className="px-4 py-6 text-center text-text-dim text-[0.85rem]">Loading providers...</div>
+        ) : providers.length === 0 ? (
+          <div className="px-4 py-6 text-center text-text-dim text-[0.85rem]">No providers connected. Use &quot;+ Connect&quot; below to add one.</div>
+        ) : (
+          providers.map((p) => {
+            const isOllama = p.name === "Ollama";
+            const connected = isOllama ? (p.is_connected && (health?.ollama ?? true)) : p.is_connected;
+            return (
+              <div
+                key={p.id}
+                className={`bg-bg-card border rounded-[14px] p-6 relative overflow-hidden transition-all hover:border-border-accent ${
+                  connected ? "border-border-accent" : "border-border"
+                }`}
               >
-                {t("modelEngines.testConnection")}
-              </button>
-              <button className="inline-flex items-center gap-2 px-3 py-1.5 bg-transparent text-text-muted border border-border rounded-md font-body text-[0.82rem] font-medium cursor-pointer transition-all hover:border-text-muted hover:text-text">
-                {t("modelEngines.configure")}
-              </button>
-              {!p.isDefault && (
-                <button className="inline-flex items-center gap-2 px-3 py-1.5 bg-transparent text-text-muted border border-border rounded-md font-body text-[0.82rem] font-medium cursor-pointer transition-all hover:border-text-muted hover:text-text">
-                  {t("modelEngines.setAsDefault")}
-                </button>
-              )}
-            </div>
-            {/* Test result */}
-            {testResults[p.name] && (
-              <div className="flex items-center gap-3 px-3 py-2 bg-bg border border-border rounded-lg mt-3">
-                <div
-                  className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                    testResults[p.name].status === "loading"
-                      ? "bg-accent-warm animate-pulse"
-                      : testResults[p.name].status === "success"
-                      ? "bg-accent shadow-[0_0_8px_rgba(52,211,153,0.3)]"
-                      : "bg-danger"
-                  }`}
-                />
-                <span className="flex-1 font-mono text-[0.8rem] text-text-muted">
-                  {testResults[p.name].status === "loading"
-                    ? t("modelEngines.testingConnection")
-                    : testResults[p.name].status === "success"
-                    ? t("modelEngines.connectionSuccessful")
-                    : testResults[p.name].error || "Connection failed"}
-                </span>
-                {testResults[p.name].latency && (
-                  <span className="font-mono text-[0.75rem] text-accent">
-                    {testResults[p.name].latency}
-                  </span>
+                {connected && (
+                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-accent" />
+                )}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-[10px] flex items-center justify-center text-xl bg-bg border border-border">
+                      {p.icon}
+                    </div>
+                    <span className="text-[1.05rem] font-semibold">{p.name}</span>
+                  </div>
+                  {p.is_default && connected ? (
+                    <span className="font-mono text-[0.68rem] px-2 py-0.5 rounded bg-accent text-bg font-semibold">
+                      {t("common.default")}
+                    </span>
+                  ) : connected ? (
+                    <span className="font-mono text-[0.68rem] px-2 py-0.5 rounded text-accent bg-accent/15">
+                      {t("common.connected")}
+                    </span>
+                  ) : (
+                    <span className="font-mono text-[0.68rem] px-2 py-0.5 rounded text-text-dim bg-bg border border-border">
+                      {t("common.notConnected")}
+                    </span>
+                  )}
+                </div>
+                <p className="text-text-muted text-[0.85rem] font-light leading-relaxed mb-4">
+                  {p.description}
+                </p>
+                <div className="flex gap-6 mb-4">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-mono text-[0.65rem] text-text-dim tracking-wide uppercase">Endpoint</span>
+                    <span className="text-[0.85rem] font-medium">{p.endpoint.replace(/^https?:\/\//, "")}</span>
+                  </div>
+                  {isOllama && (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-mono text-[0.65rem] text-text-dim tracking-wide uppercase">Models</span>
+                      <span className={`text-[0.85rem] font-medium ${ollamaModels.length > 0 ? "text-accent" : ""}`}>
+                        {ollamaModels.length} installed
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-mono text-[0.65rem] text-text-dim tracking-wide uppercase">Type</span>
+                    <span className="text-[0.85rem] font-medium">{p.type === "ollama" ? "Ollama" : "OpenAI-compat"}</span>
+                  </div>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {connected ? (
+                    <>
+                      <button
+                        onClick={() => testConnection(p)}
+                        disabled={testProviderMutation.isPending}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 bg-transparent text-text-muted border border-border rounded-md font-body text-[0.82rem] font-medium cursor-pointer transition-all hover:border-text-muted hover:text-text disabled:opacity-50"
+                      >
+                        {t("modelEngines.testConnection")}
+                      </button>
+                      <button
+                        onClick={() => openConfigureModal(p)}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 bg-transparent text-text-muted border border-border rounded-md font-body text-[0.82rem] font-medium cursor-pointer transition-all hover:border-text-muted hover:text-text"
+                      >
+                        {t("modelEngines.configure")}
+                      </button>
+                      {!p.is_default && (
+                        <button
+                          onClick={() => handleSetDefault(p)}
+                          disabled={setDefaultProviderMutation.isPending}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 bg-transparent text-text-muted border border-border rounded-md font-body text-[0.82rem] font-medium cursor-pointer transition-all hover:border-text-muted hover:text-text disabled:opacity-50"
+                        >
+                          {t("modelEngines.setAsDefault")}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDisconnect(p)}
+                        disabled={updateProviderMutation.isPending}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-transparent text-danger border border-danger/30 rounded-md font-body text-[0.82rem] cursor-pointer transition-all hover:bg-danger/10 hover:border-danger disabled:opacity-50"
+                      >
+                        {t("modelEngines.disconnect")}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleReconnect(p)}
+                        disabled={updateProviderMutation.isPending}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-bg border-none rounded-lg font-body text-[0.82rem] font-semibold cursor-pointer transition-all hover:-translate-y-0.5 disabled:opacity-50"
+                      >
+                        {t("modelEngines.reconnect")}
+                      </button>
+                      <button
+                        onClick={() => openConfigureModal(p)}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 bg-transparent text-text-muted border border-border rounded-md font-body text-[0.82rem] font-medium cursor-pointer transition-all hover:border-text-muted hover:text-text"
+                      >
+                        {t("modelEngines.configure")}
+                      </button>
+                    </>
+                  )}
+                </div>
+                {/* Test result */}
+                {testResults[p.name] && (
+                  <div className="flex items-center gap-3 px-3 py-2 bg-bg border border-border rounded-lg mt-3">
+                    <div
+                      className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                        testResults[p.name].status === "loading"
+                          ? "bg-accent-warm animate-pulse"
+                          : testResults[p.name].status === "success"
+                          ? "bg-accent shadow-[0_0_8px_rgba(52,211,153,0.3)]"
+                          : "bg-danger"
+                      }`}
+                    />
+                    <span className="flex-1 font-mono text-[0.8rem] text-text-muted">
+                      {testResults[p.name].status === "loading"
+                        ? t("modelEngines.testingConnection")
+                        : testResults[p.name].status === "success"
+                        ? t("modelEngines.connectionSuccessful")
+                        : testResults[p.name].error || "Connection failed"}
+                    </span>
+                    {testResults[p.name].latency && (
+                      <span className="font-mono text-[0.75rem] text-accent">
+                        {testResults[p.name].latency}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
-        ))}
+            );
+          })
+        )}
       </div>
 
       {/* Available Providers */}
-      <div className="font-mono text-xs text-text-dim tracking-widest uppercase mb-4 mt-10">
-        {t("modelEngines.availableProviders")}
-      </div>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
-        {AVAILABLE_PROVIDERS.map((p) => (
-          <div
-            key={p.name}
-            className="bg-bg-card border border-border rounded-[14px] p-6 relative overflow-hidden transition-all hover:border-border-accent"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-[10px] flex items-center justify-center text-xl bg-bg border border-border">
-                  {p.icon}
-                </div>
-                <span className="text-[1.05rem] font-semibold">{p.name}</span>
-              </div>
-              <span className="font-mono text-[0.68rem] px-2 py-0.5 rounded text-text-dim bg-bg border border-border">
-                {t("common.notConnected")}
-              </span>
-            </div>
-            <p className="text-text-muted text-[0.85rem] font-light leading-relaxed mb-4">
-              {p.desc}
-            </p>
-            <div className="flex gap-6 mb-4">
-              {p.meta.map((m) => (
-                <div key={m.label} className="flex flex-col gap-0.5">
-                  <span className="font-mono text-[0.65rem] text-text-dim tracking-wide uppercase">
-                    {m.label}
-                  </span>
-                  <span className="text-[0.85rem] font-medium">{m.value}</span>
-                </div>
-              ))}
-            </div>
-            <div>
-              <button className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-bg border-none rounded-lg font-body text-[0.82rem] font-semibold cursor-pointer transition-all hover:-translate-y-0.5">
-                {t("modelEngines.connect")}
-              </button>
-            </div>
+      {availableProviders.length > 0 && (
+        <>
+          <div className="font-mono text-xs text-text-dim tracking-widest uppercase mb-4 mt-10">
+            {t("modelEngines.availableProviders")}
           </div>
-        ))}
-      </div>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
+            {availableProviders.map((p) => (
+              <div
+                key={p.name}
+                className="bg-bg-card border border-border rounded-[14px] p-6 relative overflow-hidden transition-all hover:border-border-accent"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-[10px] flex items-center justify-center text-xl bg-bg border border-border">
+                      {p.icon}
+                    </div>
+                    <span className="text-[1.05rem] font-semibold">{p.name}</span>
+                  </div>
+                  <span className="font-mono text-[0.68rem] px-2 py-0.5 rounded text-text-dim bg-bg border border-border">
+                    {t("common.notConnected")}
+                  </span>
+                </div>
+                <p className="text-text-muted text-[0.85rem] font-light leading-relaxed mb-4">
+                  {p.desc}
+                </p>
+                <div className="flex gap-6 mb-4">
+                  {p.meta.map((m) => (
+                    <div key={m.label} className="flex flex-col gap-0.5">
+                      <span className="font-mono text-[0.65rem] text-text-dim tracking-wide uppercase">
+                        {m.label}
+                      </span>
+                      <span className="text-[0.85rem] font-medium">{m.value}</span>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <button
+                    onClick={() => openConnectModal(p)}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-bg border-none rounded-lg font-body text-[0.82rem] font-semibold cursor-pointer transition-all hover:-translate-y-0.5"
+                  >
+                    {t("modelEngines.connect")}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* Downloaded Models */}
       <div className="font-mono text-xs text-text-dim tracking-widest uppercase mb-4 mt-10">
@@ -439,8 +595,9 @@ export default function ModelEnginesClient() {
               onChange={(e) => setChatModel(e.target.value)}
               className="w-full px-3 py-2.5 bg-bg border border-border rounded-lg text-text font-body text-[0.85rem] outline-none focus:border-border-focus appearance-none cursor-pointer"
             >
+              <option value="">Select a model</option>
               {ollamaModels.map((m) => (
-                <option key={m.id} value={`${m.name} (Ollama)`}>{m.name} (Ollama)</option>
+                <option key={m.id} value={m.name}>{m.name} (Ollama)</option>
               ))}
             </select>
           </div>
@@ -453,8 +610,10 @@ export default function ModelEnginesClient() {
               onChange={(e) => setEmbeddingModel(e.target.value)}
               className="w-full px-3 py-2.5 bg-bg border border-border rounded-lg text-text font-body text-[0.85rem] outline-none focus:border-border-focus appearance-none cursor-pointer"
             >
-              <option>nomic-embed-text (Ollama)</option>
-              <option>all-minilm (Ollama — not downloaded)</option>
+              <option value="">Select a model</option>
+              {ollamaModels.map((m) => (
+                <option key={m.id} value={m.name}>{m.name} (Ollama)</option>
+              ))}
             </select>
           </div>
         </div>
@@ -468,8 +627,12 @@ export default function ModelEnginesClient() {
               onChange={(e) => setTtsModel(e.target.value)}
               className="w-full px-3 py-2.5 bg-bg border border-border rounded-lg text-text font-body text-[0.85rem] outline-none focus:border-border-focus appearance-none cursor-pointer"
             >
-              <option>piper-en-amy (Built-in)</option>
-              <option>xtts-v2 (Not downloaded)</option>
+              <option value="">Select a model</option>
+              <option value="piper-en-amy">piper-en-amy (Built-in)</option>
+              <option value="xtts-v2">xtts-v2</option>
+              {ollamaModels.map((m) => (
+                <option key={m.id} value={m.name}>{m.name} (Ollama)</option>
+              ))}
             </select>
           </div>
           <div>
@@ -487,10 +650,11 @@ export default function ModelEnginesClient() {
         </div>
         <div className="mt-4">
           <button
-            onClick={() => showToastMsg(t("modelEngines.configSaved"))}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-bg border-none rounded-lg font-body text-[0.9rem] font-semibold cursor-pointer transition-all shadow-[0_0_20px_rgba(52,211,153,0.15)] hover:-translate-y-0.5 hover:shadow-[0_0_40px_rgba(52,211,153,0.3)]"
+            onClick={handleSaveModelConfig}
+            disabled={updateModelConfigMutation.isPending}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-bg border-none rounded-lg font-body text-[0.9rem] font-semibold cursor-pointer transition-all shadow-[0_0_20px_rgba(52,211,153,0.15)] hover:-translate-y-0.5 hover:shadow-[0_0_40px_rgba(52,211,153,0.3)] disabled:opacity-50"
           >
-            {t("modelEngines.saveConfiguration")}
+            {updateModelConfigMutation.isPending ? t("modelEngines.saving") : t("modelEngines.saveConfiguration")}
           </button>
         </div>
       </div>
@@ -546,6 +710,83 @@ export default function ModelEnginesClient() {
             )}
             <div className="font-mono text-[0.72rem] text-text-dim mt-2">
               {t("modelEngines.popular")}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Connect / Configure Modal */}
+      {showConnectModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000] backdrop-blur-sm">
+          <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-[460px] p-8 shadow-[0_25px_80px_rgba(0,0,0,0.6)] relative">
+            <button
+              onClick={() => setShowConnectModal(false)}
+              className="absolute top-4 right-4 bg-transparent border-none text-text-dim text-xl cursor-pointer"
+            >
+              &times;
+            </button>
+            <h3 className="text-xl font-semibold mb-1">
+              {editingProvider ? t("modelEngines.configureProvider") : t("modelEngines.connectProvider")}
+            </h3>
+            <p className="text-text-muted text-[0.88rem] font-light mb-5">
+              {editingProvider ? t("modelEngines.configureProviderDesc") : t("modelEngines.connectProviderDesc")}
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block font-mono text-[0.72rem] text-text-muted tracking-wide uppercase mb-1.5">
+                  {t("modelEngines.providerName")}
+                </label>
+                <input
+                  value={connectForm.name}
+                  onChange={(e) => setConnectForm((f) => ({ ...f, name: e.target.value }))}
+                  className="w-full px-4 py-3 bg-bg-card border border-border rounded-lg text-text font-body text-[0.88rem] outline-none focus:border-border-focus"
+                />
+              </div>
+              <div>
+                <label className="block font-mono text-[0.72rem] text-text-muted tracking-wide uppercase mb-1.5">
+                  {t("modelEngines.endpoint")}
+                </label>
+                <input
+                  value={connectForm.endpoint}
+                  onChange={(e) => setConnectForm((f) => ({ ...f, endpoint: e.target.value }))}
+                  placeholder={t("modelEngines.endpointPlaceholder")}
+                  className="w-full px-4 py-3 bg-bg-card border border-border rounded-lg text-text font-mono text-[0.88rem] outline-none focus:border-border-focus"
+                />
+              </div>
+              <div>
+                <label className="block font-mono text-[0.72rem] text-text-muted tracking-wide uppercase mb-1.5">
+                  {t("modelEngines.providerType")}
+                </label>
+                <select
+                  value={connectForm.type}
+                  onChange={(e) => setConnectForm((f) => ({ ...f, type: e.target.value as "ollama" | "openai" }))}
+                  className="w-full px-3 py-2.5 bg-bg border border-border rounded-lg text-text font-body text-[0.85rem] outline-none focus:border-border-focus appearance-none cursor-pointer"
+                >
+                  <option value="ollama">Ollama</option>
+                  <option value="openai">OpenAI-compatible</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={handleConnectSubmit}
+                disabled={isSubmitting || !connectForm.endpoint.trim()}
+                className="flex-1 px-5 py-3 bg-accent text-bg border-none rounded-lg font-body font-semibold text-[0.88rem] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting
+                  ? t("modelEngines.connecting")
+                  : editingProvider
+                  ? t("common.save")
+                  : t("modelEngines.connect")}
+              </button>
+              <button
+                onClick={() => setShowConnectModal(false)}
+                className="px-5 py-3 bg-transparent text-text-muted border border-border rounded-lg font-body text-[0.88rem] cursor-pointer hover:border-text-muted"
+              >
+                {t("common.cancel")}
+              </button>
             </div>
           </div>
         </div>

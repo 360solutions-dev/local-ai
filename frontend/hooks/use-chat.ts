@@ -359,3 +359,177 @@ export function useDeleteFile() {
     },
   });
 }
+
+// ---------------------------------------------------------------------------
+// Provider hooks
+// ---------------------------------------------------------------------------
+
+export interface ProviderData {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  endpoint: string;
+  type: "ollama" | "openai";
+  is_default: boolean;
+  is_connected: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export function useProviders() {
+  return useQuery({
+    queryKey: ["system", "providers"],
+    queryFn: async () => {
+      const res = await apiGet<{ providers: ProviderData[] }>("/api/system/providers/");
+      if (!res.ok) return [];
+      return res.data.providers;
+    },
+  });
+}
+
+export function useHasActiveProvider() {
+  const { data: providers = [] } = useProviders();
+  const { data: health } = useSystemHealth();
+  return providers.some((p) => {
+    if (p.name === "Ollama") return p.is_connected && (health?.ollama ?? true);
+    return p.is_connected;
+  });
+}
+
+export function useCreateProvider() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      name: string;
+      icon?: string;
+      description?: string;
+      endpoint: string;
+      type: "ollama" | "openai";
+      is_default?: boolean;
+    }) => {
+      const res = await apiPost<{ provider: ProviderData }>("/api/system/providers/", data);
+      if (!res.ok) {
+        throw new Error(
+          (res.data as unknown as { error?: { message?: string } })?.error?.message ||
+            "Failed to create provider.",
+        );
+      }
+      return res.data.provider;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["system", "providers"] });
+    },
+  });
+}
+
+export function useUpdateProvider() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: string } & Partial<{
+      name: string;
+      icon: string;
+      description: string;
+      endpoint: string;
+      type: "ollama" | "openai";
+      is_default: boolean;
+      is_connected: boolean;
+    }>) => {
+      const res = await apiPatch<{ provider: ProviderData }>(`/api/system/providers/${id}/`, data);
+      if (!res.ok) {
+        throw new Error(
+          (res.data as unknown as { error?: { message?: string } })?.error?.message ||
+            "Failed to update provider.",
+        );
+      }
+      return res.data.provider;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["system", "providers"] });
+    },
+  });
+}
+
+export function useDeleteProvider() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiDelete(`/api/system/providers/${id}/`);
+      if (!res.ok) {
+        throw new Error(
+          (res.data as { error?: { message?: string } })?.error?.message ||
+            "Failed to delete provider.",
+        );
+      }
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["system", "providers"] });
+    },
+  });
+}
+
+export function useSetDefaultProvider() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiPost<{ provider: ProviderData }>(`/api/system/providers/${id}/set-default/`, {});
+      if (!res.ok) {
+        throw new Error(
+          (res.data as unknown as { error?: { message?: string } })?.error?.message ||
+            "Failed to set default provider.",
+        );
+      }
+      return res.data.provider;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["system", "providers"] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Model config hooks
+// ---------------------------------------------------------------------------
+
+export interface ModelConfigData {
+  chat_model: string;
+  embedding_model: string;
+  tts_model: string;
+  summarizer_model: string;
+}
+
+export function useModelConfig() {
+  return useQuery({
+    queryKey: ["system", "model-config"],
+    queryFn: async () => {
+      const res = await apiGet<{ config: ModelConfigData }>("/api/system/model-config/");
+      if (!res.ok) return { chat_model: "", embedding_model: "", tts_model: "", summarizer_model: "" } as ModelConfigData;
+      return res.data.config;
+    },
+  });
+}
+
+export function useUpdateModelConfig() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: Partial<ModelConfigData>) => {
+      const res = await apiPatch<{ config: ModelConfigData }>("/api/system/model-config/", data);
+      if (!res.ok) {
+        throw new Error(
+          (res.data as unknown as { error?: { message?: string } })?.error?.message ||
+            "Failed to save model configuration.",
+        );
+      }
+      return res.data.config;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["system", "model-config"] });
+    },
+  });
+}

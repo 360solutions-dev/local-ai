@@ -21,6 +21,7 @@ import {
   useUploadFile,
   useDeleteFile,
   useOllamaModels,
+  useHasActiveProvider,
   type ChatMessage,
 } from "@/hooks/use-chat";
 
@@ -107,6 +108,7 @@ export default function ChatClient() {
   const deleteFile = useDeleteFile();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: ollamaModels = [], isLoading: modelsLoading } = useOllamaModels();
+  const hasActiveProvider = useHasActiveProvider();
 
   // Clear pending messages when user manually switches chats (not during send)
   const isSwitchingRef = useRef(false);
@@ -360,6 +362,75 @@ export default function ChatClient() {
     );
   }
 
+  // Block entire page if no provider or no model
+  if (!hasActiveProvider || (!modelsLoading && ollamaModels.length === 0)) {
+    const noProvider = !hasActiveProvider;
+    return (
+      <div className="font-body bg-bg text-text min-h-screen flex items-center justify-center overflow-hidden relative">
+        {/* Noise overlay */}
+        <div className="fixed inset-0 pointer-events-none z-[9999] opacity-[0.04] bg-[url('data:image/svg+xml,%3Csvg%20viewBox=%270%200%20256%20256%27%20xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cfilter%20id=%27n%27%3E%3CfeTurbulence%20type=%27fractalNoise%27%20baseFrequency=%270.9%27%20numOctaves=%274%27%20stitchTiles=%27stitch%27/%3E%3C/filter%3E%3Crect%20width=%27100%25%27%20height=%27100%25%27%20filter=%27url(%23n)%27/%3E%3C/svg%3E')]" />
+        {/* Ambient glow */}
+        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-[radial-gradient(ellipse,rgba(52,211,153,0.15)_0%,transparent_65%)] pointer-events-none z-0" />
+
+        <div className="relative z-1 w-full max-w-[480px] px-8 text-center animate-[cardIn_0.5s_ease]">
+          {/* Icon */}
+          <div className="w-[72px] h-[72px] rounded-full bg-accent/15 border-2 border-accent flex items-center justify-center text-3xl mx-auto mb-6 animate-[scaleIn_0.5s_cubic-bezier(0.34,1.56,0.64,1)]">
+            {noProvider ? "\u26A0\uFE0F" : "\uD83E\uDD16"}
+          </div>
+
+          {/* Heading */}
+          <h1 className="text-[1.8rem] font-bold tracking-tight mb-2.5 leading-tight">
+            {noProvider ? t("modelEngines.noProviderWarning") : t("chat.chooseModel")}
+          </h1>
+          <p className="text-text-muted text-[0.95rem] font-light leading-relaxed mb-8">
+            {noProvider
+              ? t("modelEngines.noProviderWarningDesc")
+              : t("chat.chooseModelDesc")}
+          </p>
+
+          {/* Info cards */}
+          <div className="flex flex-col gap-2.5 mb-8">
+            {noProvider ? (
+              <>
+                <div className="flex items-center gap-3 px-4 py-3 bg-bg-card border border-border rounded-[10px] text-[0.9rem] text-text-muted font-light">
+                  <div className="w-8 h-8 rounded-lg bg-accent/15 border border-border-accent flex items-center justify-center text-[0.9rem] shrink-0">1</div>
+                  Go to Model Engines
+                </div>
+                <div className="flex items-center gap-3 px-4 py-3 bg-bg-card border border-border rounded-[10px] text-[0.9rem] text-text-muted font-light">
+                  <div className="w-8 h-8 rounded-lg bg-accent/15 border border-border-accent flex items-center justify-center text-[0.9rem] shrink-0">2</div>
+                  Connect a provider (e.g. Ollama)
+                </div>
+                <div className="flex items-center gap-3 px-4 py-3 bg-bg-card border border-border rounded-[10px] text-[0.9rem] text-text-muted font-light">
+                  <div className="w-8 h-8 rounded-lg bg-accent/15 border border-border-accent flex items-center justify-center text-[0.9rem] shrink-0">3</div>
+                  Pull a model and start chatting
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 px-4 py-3 bg-bg-card border border-border rounded-[10px] text-[0.9rem] text-text-muted font-light">
+                  <div className="w-8 h-8 rounded-lg bg-accent/15 border border-border-accent flex items-center justify-center text-[0.9rem] shrink-0">1</div>
+                  Go to Model Engines
+                </div>
+                <div className="flex items-center gap-3 px-4 py-3 bg-bg-card border border-border rounded-[10px] text-[0.9rem] text-text-muted font-light">
+                  <div className="w-8 h-8 rounded-lg bg-accent/15 border border-border-accent flex items-center justify-center text-[0.9rem] shrink-0">2</div>
+                  Pull a model (e.g. llama3.2, mistral, phi3)
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* CTA */}
+          <Link
+            href="/model-engines"
+            className="inline-flex items-center justify-center gap-2 w-full py-3.5 px-8 bg-accent text-bg border-none rounded-lg font-body text-base font-semibold no-underline cursor-pointer transition-all duration-200 shadow-[0_0_30px_rgba(52,211,153,0.3)] hover:-translate-y-0.5 hover:shadow-[0_0_50px_rgba(52,211,153,0.3)]"
+          >
+            {t("sidebar.modelEngines")} &rarr;
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="font-body bg-bg text-text h-screen overflow-hidden relative">
       {/* Noise overlay */}
@@ -494,25 +565,7 @@ export default function ChatClient() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-6" ref={messagesContainerRef}>
-            {!modelsLoading && ollamaModels.length === 0 && (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center max-w-[400px]">
-                  <div className="text-4xl mb-3">🤖</div>
-                  <div className="text-[1.1rem] font-semibold mb-2">No AI model installed</div>
-                  <div className="text-[0.85rem] text-text-muted mb-4 leading-relaxed">
-                    You need to install a language model before you can chat. Go to Model Engines to download one.
-                  </div>
-                  <Link
-                    href="/model-engines"
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-accent text-bg border-none rounded-lg font-body text-[0.88rem] font-semibold no-underline transition-all hover:-translate-y-0.5"
-                  >
-                    Go to Model Engines
-                  </Link>
-                </div>
-              </div>
-            )}
-
-            {!modelsLoading && ollamaModels.length > 0 && !activeChatId && !convLoading && (
+            {!activeChatId && !convLoading && (
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center text-text-dim">
                   <div className="text-4xl mb-3">💬</div>
@@ -522,13 +575,13 @@ export default function ChatClient() {
               </div>
             )}
 
-            {ollamaModels.length > 0 && activeChatId && msgsLoading && (
+            {activeChatId && msgsLoading && (
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-text-dim text-[0.85rem]">Loading messages...</div>
               </div>
             )}
 
-            {ollamaModels.length > 0 && activeChatId && !msgsLoading && allMessages.length === 0 && (
+            {activeChatId && !msgsLoading && allMessages.length === 0 && (
               <div className="max-w-[720px] w-full mx-auto flex gap-3 animate-[msgIn_0.3s_ease]">
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[0.8rem] shrink-0 mt-0.5 bg-accent/15 border border-border-accent text-accent">🤖</div>
                 <div className="flex-1">
@@ -542,7 +595,7 @@ export default function ChatClient() {
               </div>
             )}
 
-            {ollamaModels.length > 0 && allMessages.map((m) => {
+            {allMessages.map((m) => {
               const isPending = typeof m.id === "string" && (m.id as string).startsWith("pending-");
               return renderMessage(
                 { ...m, id: m.id, sources: "sources" in m ? m.sources : null, created_at: "created_at" in m ? m.created_at : null },
@@ -551,8 +604,8 @@ export default function ChatClient() {
             })}
           </div>
 
-          {/* Input area — hidden when no models */}
-          {ollamaModels.length > 0 && (
+          {/* Input area */}
+          {(
           <div className="px-8 py-4 pb-6 border-t border-border bg-bg-elevated">
             <div className="max-w-[720px] mx-auto relative">
               {/* @file autocomplete dropdown */}

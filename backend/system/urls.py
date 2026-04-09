@@ -12,4 +12,8 @@ urlpatterns = [
     path("danger/delete-all-data/", views.DeleteAllDataView.as_view(), name="danger-delete"),
     path("danger/factory-reset/", views.FactoryResetView.as_view(), name="danger-factory-reset"),
     path("providers/test/", views.ProviderTestView.as_view(), name="provider-test"),
+    path("providers/", views.ProviderListCreateView.as_view(), name="provider-list-create"),
+    path("providers/<uuid:provider_id>/", views.ProviderDetailView.as_view(), name="provider-detail"),
+    path("providers/<uuid:provider_id>/set-default/", views.ProviderSetDefaultView.as_view(), name="provider-set-default"),
+    path("model-config/", views.ModelConfigView.as_view(), name="model-config"),
 ]

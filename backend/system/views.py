@@ -20,9 +20,13 @@ from accounts.serializers import UserReadSerializer
 from core.permissions import IsAdminUser
 from notifications.models import Notification, NotificationPreference
 
-from .models import InstanceSettings
+from .models import InstanceSettings, ModelConfig, Provider
 from .rag_queries import delete_all_chat_data, get_all_chat_data, get_query_history
-from .serializers import InstanceSettingsSerializer
+from .serializers import (
+    InstanceSettingsSerializer,
+    ModelConfigSerializer,
+    ProviderSerializer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -376,3 +380,136 @@ class FactoryResetView(APIView):
         response.delete_cookie("access_token", path="/")
         response.delete_cookie("refresh_token", path="/api/auth/token/refresh/")
         return response
+
+
+class ProviderListCreateView(APIView):
+    """List all providers or create a new one."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        providers = Provider.objects.all()
+        serializer = ProviderSerializer(providers, many=True)
+        return Response({"providers": serializer.data})
+
+    def post(self, request):
+        serializer = ProviderSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        provider = serializer.save()
+
+        # Test connectivity on creation
+        connected = self._check_connection(provider)
+        provider.is_connected = connected
+        provider.save(update_fields=["is_connected"])
+
+        return Response(
+            {"provider": ProviderSerializer(provider).data},
+            status=status.HTTP_201_CREATED,
+        )
+
+    def _check_connection(self, provider):
+        """Quick connectivity check when adding a provider."""
+        endpoint = provider.endpoint.rstrip("/")
+        parsed = urlparse(endpoint)
+        hostname = parsed.hostname or ""
+
+        # Resolve Docker hostnames
+        docker_map = {
+            ("localhost", 11434): "ollama",
+            ("127.0.0.1", 11434): "ollama",
+        }
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        docker_host = docker_map.get((hostname, port))
+        if docker_host:
+            endpoint = f"{parsed.scheme}://{docker_host}:{port}"
+
+        test_url = (
+            f"{endpoint}/v1/models"
+            if provider.type == "openai"
+            else f"{endpoint}/api/tags"
+        )
+        try:
+            resp = http_requests.get(test_url, timeout=3)
+            resp.raise_for_status()
+            return True
+        except Exception:
+            return False
+
+
+class ProviderDetailView(APIView):
+    """Retrieve, update, or delete a provider."""
+
+    permission_classes = [IsAuthenticated]
+
+    def _get_provider(self, provider_id):
+        try:
+            return Provider.objects.get(pk=provider_id)
+        except Provider.DoesNotExist:
+            return None
+
+    def get(self, request, provider_id):
+        provider = self._get_provider(provider_id)
+        if not provider:
+            return Response(
+                {"error": {"code": "NOT_FOUND", "message": "Provider not found."}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response({"provider": ProviderSerializer(provider).data})
+
+    def patch(self, request, provider_id):
+        provider = self._get_provider(provider_id)
+        if not provider:
+            return Response(
+                {"error": {"code": "NOT_FOUND", "message": "Provider not found."}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        serializer = ProviderSerializer(provider, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"provider": ProviderSerializer(provider).data})
+
+    def delete(self, request, provider_id):
+        provider = self._get_provider(provider_id)
+        if not provider:
+            return Response(
+                {"error": {"code": "NOT_FOUND", "message": "Provider not found."}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        provider.delete()
+        return Response({"message": "Provider deleted."})
+
+
+class ProviderSetDefaultView(APIView):
+    """Set a provider as the default."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, provider_id):
+        try:
+            provider = Provider.objects.get(pk=provider_id)
+        except Provider.DoesNotExist:
+            return Response(
+                {"error": {"code": "NOT_FOUND", "message": "Provider not found."}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        provider.is_default = True
+        provider.save()
+        return Response({"provider": ProviderSerializer(provider).data})
+
+
+class ModelConfigView(APIView):
+    """Get or update the feature → model mapping."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        config = ModelConfig.get_or_create_singleton()
+        serializer = ModelConfigSerializer(config)
+        return Response({"config": serializer.data})
+
+    def patch(self, request):
+        config = ModelConfig.get_or_create_singleton()
+        serializer = ModelConfigSerializer(config, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"config": serializer.data})
