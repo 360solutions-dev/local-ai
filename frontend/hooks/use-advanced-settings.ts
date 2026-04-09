@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { apiDownload, apiGet, apiPatch, apiPost } from "@/lib/api";
 
 interface InstanceInfo {
@@ -136,12 +135,12 @@ export function useDeleteAllData() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["system"] });
+      queryClient.invalidateQueries({ queryKey: ["chat"] });
     },
   });
 }
 
 export function useFactoryReset() {
-  const router = useRouter();
   const queryClient = useQueryClient();
 
   return useMutation({

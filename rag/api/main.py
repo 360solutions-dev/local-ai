@@ -422,3 +422,57 @@ def delete_file(file_id: str):
     if not delete_indexed_file(file_id):
         return {"error": "File not found."}
     return {"message": "File removed."}
+
+
+@app.post("/api/reset", dependencies=[Depends(verify_api_key)])
+def factory_reset():
+    """Delete all indexed files metadata, vector store data, Ollama models, and clear caches."""
+    import shutil
+    import urllib.request
+
+    from config import EMBEDDING_MODEL, OLLAMA_BASE_URL, PERSIST_DIRECTORY
+    from query_history import delete_all_indexed_files
+
+    errors = []
+
+    # 1. Delete all file metadata from DB
+    delete_all_indexed_files()
+
+    # 2. Delete the vector store directory
+    store_path = Path(PERSIST_DIRECTORY)
+    if store_path.exists():
+        shutil.rmtree(store_path, ignore_errors=True)
+
+    # 3. Clear in-memory caches
+    invalidate_index_cache()
+
+    # 4. Delete all Ollama models (except the embedding model)
+    try:
+        tags_url = f"{OLLAMA_BASE_URL.rstrip('/')}/api/tags"
+        with urllib.request.urlopen(tags_url, timeout=5) as resp:
+            data = json.loads(resp.read())
+        for m in data.get("models", []):
+            name = m.get("name", "")
+            if not name:
+                continue
+            # Keep the embedding model — it's required for RAG to work
+            if EMBEDDING_MODEL and EMBEDDING_MODEL in name:
+                continue
+            try:
+                delete_url = f"{OLLAMA_BASE_URL.rstrip('/')}/api/delete"
+                payload = json.dumps({"name": name}).encode()
+                req = urllib.request.Request(
+                    delete_url, data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="DELETE",
+                )
+                urllib.request.urlopen(req, timeout=30)
+            except Exception as e:
+                errors.append(f"Failed to delete model {name}: {e}")
+    except Exception as e:
+        errors.append(f"Failed to list Ollama models: {e}")
+
+    result = {"message": "Factory reset complete."}
+    if errors:
+        result["warnings"] = errors
+    return result

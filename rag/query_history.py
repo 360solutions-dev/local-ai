@@ -551,3 +551,19 @@ def delete_indexed_file(file_id: str) -> bool:
         return False
     finally:
         _return_connection(conn)
+
+
+def delete_all_indexed_files() -> bool:
+    """Delete all indexed file records. Returns True if successful."""
+    conn = _get_connection()
+    if conn is None:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM indexed_files")
+        conn.commit()
+        return True
+    except Exception:
+        return False
+    finally:
+        _return_connection(conn)

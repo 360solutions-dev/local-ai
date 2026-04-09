@@ -108,8 +108,13 @@ export default function ChatClient() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: ollamaModels = [], isLoading: modelsLoading } = useOllamaModels();
 
-  // Clear pending messages when active chat changes (navigation, switching chats)
+  // Clear pending messages when user manually switches chats (not during send)
+  const isSwitchingRef = useRef(false);
   useEffect(() => {
+    if (isSwitchingRef.current) {
+      isSwitchingRef.current = false;
+      return;
+    }
     setPendingMessages([]);
   }, [activeChatId]);
 
@@ -173,6 +178,7 @@ export default function ChatClient() {
       try {
         const conv = await createConversation.mutateAsync(undefined);
         chatId = conv.id;
+        isSwitchingRef.current = true;
         setActiveChatId(chatId);
       } catch {
         return;
@@ -567,21 +573,23 @@ export default function ChatClient() {
                   ))}
                 </div>
               )}
-              <div className="flex items-center gap-2 w-full bg-bg-card border border-border rounded-xl min-h-[48px] max-h-[150px] pr-[4.5rem] pl-3 py-1 focus-within:border-border-focus transition-colors">
+              <div className="flex flex-col w-full bg-bg-card border border-border rounded-xl min-h-[48px] max-h-[150px] overflow-y-auto pr-[4.5rem] pl-3 py-1 focus-within:border-border-focus transition-colors">
                 {taggedFile && (
-                  <span className="inline-flex items-center gap-1.5 bg-accent/15 text-accent border border-accent/30 rounded-md px-2.5 py-1 text-[0.78rem] font-mono whitespace-nowrap shrink-0">
-                    📄 @{taggedFile.name}
-                    <button
-                      type="button"
-                      className="bg-transparent border-none text-accent/60 cursor-pointer text-[0.7rem] p-0 ml-0.5 hover:text-accent"
-                      onClick={() => setTaggedFile(null)}
-                    >
-                      ✕
-                    </button>
-                  </span>
+                  <div className="flex items-center pt-1.5 px-0.5">
+                    <span className="inline-flex items-center gap-1.5 bg-accent/15 text-accent border border-accent/30 rounded-md px-2.5 py-1 text-[0.78rem] font-mono max-w-full">
+                      <span className="truncate">📄 @{taggedFile.name}</span>
+                      <button
+                        type="button"
+                        className="bg-transparent border-none text-accent/60 cursor-pointer text-[0.7rem] p-0 ml-0.5 hover:text-accent shrink-0"
+                        onClick={() => setTaggedFile(null)}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  </div>
                 )}
                 <textarea
-                  className="flex-1 py-2.5 bg-transparent text-text font-body text-[0.95rem] outline-none resize-none leading-relaxed placeholder:text-text-dim border-none"
+                  className="w-full py-2.5 bg-transparent text-text font-body text-[0.95rem] outline-none resize-none leading-relaxed placeholder:text-text-dim border-none"
                   placeholder={taggedFile ? "Ask about this file..." : t("chat.askAboutFiles")}
                   rows={1}
                   value={input}

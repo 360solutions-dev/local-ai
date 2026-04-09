@@ -1,12 +1,15 @@
 import io
 import json
+import logging
+import os
 import time
 import zipfile
 from datetime import datetime, timezone
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests as http_requests
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -20,6 +23,18 @@ from notifications.models import Notification, NotificationPreference
 from .models import InstanceSettings
 from .rag_queries import delete_all_chat_data, get_all_chat_data, get_query_history
 from .serializers import InstanceSettingsSerializer
+
+logger = logging.getLogger(__name__)
+
+RAG_SERVICE_URL = os.environ.get("RAG_SERVICE_URL", "http://localhost:8080")
+RAG_API_KEY = os.environ.get("RAG_API_KEY", "")
+
+
+def _rag_headers():
+    headers = {}
+    if RAG_API_KEY:
+        headers["X-API-Key"] = RAG_API_KEY
+    return headers
 
 
 def _format_uptime(seconds):
@@ -242,6 +257,13 @@ class DeleteAllDataView(APIView):
 
         Notification.objects.filter(user=request.user).delete()
 
+        # Reset RAG service (indexed files + vector store)
+        try:
+            rag_url = urljoin(RAG_SERVICE_URL, "/api/reset")
+            http_requests.post(rag_url, headers=_rag_headers(), timeout=30)
+        except Exception as e:
+            logger.warning("RAG reset failed during delete-all-data: %s", e)
+
         instance = InstanceSettings.get_or_create_singleton()
         instance.request_logging = True
         instance.debug_mode = False
@@ -329,14 +351,26 @@ class FactoryResetView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # 1. Delete all chat data (messages, conversations, query_history)
         delete_all_chat_data()
 
-        Notification.objects.filter(user=request.user).delete()
-        NotificationPreference.objects.filter(user=request.user).delete()
+        # 2. Delete all notifications and preferences for all users
+        Notification.objects.all().delete()
+        NotificationPreference.objects.all().delete()
+
+        # 3. Delete all instance settings
         InstanceSettings.objects.all().delete()
 
-        user = request.user
-        user.delete()
+        # 4. Reset RAG service (indexed files metadata + vector store)
+        try:
+            rag_url = urljoin(RAG_SERVICE_URL, "/api/reset")
+            http_requests.post(rag_url, headers=_rag_headers(), timeout=30)
+        except Exception as e:
+            logger.warning("RAG reset failed during factory reset: %s", e)
+
+        # 5. Delete all users
+        User = get_user_model()
+        User.objects.all().delete()
 
         response = Response({"message": "Factory reset complete."})
         response.delete_cookie("access_token", path="/")
