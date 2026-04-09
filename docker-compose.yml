@@ -63,6 +63,7 @@ services:
     environment:
       BACKEND_URL: http://django:8000
       RAG_URL: http://rag:8080
+      RAG_API_KEY: ${RAG_API_KEY}
     ports:
       - "3000:3000"
     volumes:

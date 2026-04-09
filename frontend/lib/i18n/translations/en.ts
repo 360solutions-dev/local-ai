@@ -302,6 +302,11 @@ const en = {
   "modelEngines.popular": "Popular: llama3.2 · mistral · qwen2.5 · deepseek-r1 · phi3 · gemma2",
   "modelEngines.downloadedSuccess": "{name} downloaded successfully",
   "modelEngines.pulling": "Pulling {name}...",
+  "modelEngines.modelNameRequired": "Please enter a model name",
+  "modelEngines.modelNameTooLong": "Model name is too long",
+  "modelEngines.invalidModelName": "Invalid format. Use: model, model:tag, or namespace/model:tag",
+  "modelEngines.modelNotFound": "Model not found in Ollama library. Browse models at ollama.com/library",
+  "modelEngines.validating": "Checking...",
 
   // Text to Audio
   "tts.title": "Text to Audio",

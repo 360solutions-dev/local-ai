@@ -291,6 +291,11 @@ const zh: Translations = {
   "modelEngines.popular": "热门：llama3.2 · mistral · qwen2.5 · deepseek-r1 · phi3 · gemma2",
   "modelEngines.downloadedSuccess": "{name} 下载成功",
   "modelEngines.pulling": "正在拉取 {name}...",
+  "modelEngines.modelNameRequired": "请输入模型名称",
+  "modelEngines.modelNameTooLong": "模型名称过长",
+  "modelEngines.invalidModelName": "格式无效。格式：model、model:tag 或 namespace/model:tag",
+  "modelEngines.modelNotFound": "在 Ollama 库中未找到该模型。请访问 ollama.com/library 浏览模型",
+  "modelEngines.validating": "验证中...",
 
   "tts.title": "文字转语音",
   "tts.exportAll": "全部导出",

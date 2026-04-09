@@ -4,6 +4,7 @@
  */
 
 const RAG_URL = process.env.RAG_URL || "http://localhost:8080";
+const RAG_API_KEY = process.env.RAG_API_KEY || "";
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -13,9 +14,14 @@ export async function POST(request: Request) {
     return Response.json({ error: "Model name required" }, { status: 400 });
   }
 
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (RAG_API_KEY) {
+    headers["X-API-Key"] = RAG_API_KEY;
+  }
+
   const ragResp = await fetch(`${RAG_URL}/api/models/pull`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ name }),
   });
 

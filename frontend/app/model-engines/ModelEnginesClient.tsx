@@ -81,6 +81,8 @@ export default function ModelEnginesClient() {
 
   const [showPullModal, setShowPullModal] = useState(false);
   const [pullInput, setPullInput] = useState("");
+  const [pullError, setPullError] = useState<string | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { status: string; latency?: string; error?: string }>>({});
 
@@ -143,11 +145,45 @@ export default function ModelEnginesClient() {
     );
   }
 
-  function handlePullModel() {
+  function validateModelName(name: string): string | null {
+    if (!name) return t("modelEngines.modelNameRequired");
+    if (name.length > 200) return t("modelEngines.modelNameTooLong");
+    // Ollama format: [namespace/]model[:tag]
+    const pattern = /^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?(\/[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?)?(:[a-zA-Z0-9][a-zA-Z0-9._-]*)?$/;
+    if (!pattern.test(name)) return t("modelEngines.invalidModelName");
+    return null;
+  }
+
+  async function handlePullModel() {
     const name = pullInput.trim();
-    if (!name || isPulling) return;
+    if (!name || isPulling || isValidating) return;
+
+    // Client-side format validation
+    const error = validateModelName(name);
+    if (error) {
+      setPullError(error);
+      return;
+    }
+
+    // Server-side: check if model exists in Ollama library
+    setIsValidating(true);
+    setPullError(null);
+    try {
+      const res = await fetch(`/api/models/validate?name=${encodeURIComponent(name)}`);
+      const data = await res.json();
+      if (!data.valid) {
+        setPullError(data.error || t("modelEngines.modelNotFound"));
+        return;
+      }
+    } catch {
+      // If validation endpoint is unreachable, proceed anyway
+    } finally {
+      setIsValidating(false);
+    }
+
     setShowPullModal(false);
     setPullInput("");
+    setPullError(null);
     startPull(name);
   }
 
@@ -173,7 +209,7 @@ export default function ModelEnginesClient() {
           </p>
         </div>
         <button
-          onClick={() => setShowPullModal(true)}
+          onClick={() => { setShowPullModal(true); setPullError(null); }}
           disabled={isPulling}
           className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-bg border-none rounded-lg font-body text-[0.9rem] font-semibold cursor-pointer transition-all shadow-[0_0_20px_rgba(52,211,153,0.15)] hover:-translate-y-0.5 hover:shadow-[0_0_40px_rgba(52,211,153,0.3)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -485,18 +521,29 @@ export default function ModelEnginesClient() {
             <div className="flex gap-2">
               <input
                 value={pullInput}
-                onChange={(e) => setPullInput(e.target.value)}
+                onChange={(e) => {
+                  setPullInput(e.target.value);
+                  if (pullError) setPullError(null);
+                }}
                 onKeyDown={(e) => e.key === "Enter" && handlePullModel()}
                 placeholder={t("modelEngines.pullPlaceholder")}
-                className="flex-1 px-4 py-3 bg-bg-card border border-border rounded-lg text-text font-mono text-[0.88rem] outline-none focus:border-border-focus"
+                className={`flex-1 px-4 py-3 bg-bg-card border rounded-lg text-text font-mono text-[0.88rem] outline-none focus:border-border-focus ${
+                  pullError ? "border-danger" : "border-border"
+                }`}
               />
               <button
                 onClick={handlePullModel}
-                className="px-5 py-3 bg-accent text-bg border-none rounded-lg font-body font-semibold text-[0.88rem] cursor-pointer whitespace-nowrap"
+                disabled={isValidating}
+                className="px-5 py-3 bg-accent text-bg border-none rounded-lg font-body font-semibold text-[0.88rem] cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {t("modelEngines.pull")}
+                {isValidating ? t("modelEngines.validating") : t("modelEngines.pull")}
               </button>
             </div>
+            {pullError && (
+              <div className="font-mono text-[0.78rem] text-danger mt-2">
+                {pullError}
+              </div>
+            )}
             <div className="font-mono text-[0.72rem] text-text-dim mt-2">
               {t("modelEngines.popular")}
             </div>

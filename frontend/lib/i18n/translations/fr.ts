@@ -291,6 +291,11 @@ const fr: Translations = {
   "modelEngines.popular": "Populaires : llama3.2 · mistral · qwen2.5 · deepseek-r1 · phi3 · gemma2",
   "modelEngines.downloadedSuccess": "{name} téléchargé avec succès",
   "modelEngines.pulling": "Téléchargement de {name}...",
+  "modelEngines.modelNameRequired": "Veuillez entrer un nom de modèle",
+  "modelEngines.modelNameTooLong": "Le nom du modèle est trop long",
+  "modelEngines.invalidModelName": "Format invalide. Utilisez : model, model:tag ou namespace/model:tag",
+  "modelEngines.modelNotFound": "Modèle introuvable dans la bibliothèque Ollama. Parcourir les modèles sur ollama.com/library",
+  "modelEngines.validating": "Vérification...",
 
   "tts.title": "Texte en audio",
   "tts.exportAll": "Tout exporter",

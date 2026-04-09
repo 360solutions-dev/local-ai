@@ -291,6 +291,11 @@ const ja: Translations = {
   "modelEngines.popular": "人気：llama3.2 · mistral · qwen2.5 · deepseek-r1 · phi3 · gemma2",
   "modelEngines.downloadedSuccess": "{name}のダウンロードが完了しました",
   "modelEngines.pulling": "{name}を取得中...",
+  "modelEngines.modelNameRequired": "モデル名を入力してください",
+  "modelEngines.modelNameTooLong": "モデル名が長すぎます",
+  "modelEngines.invalidModelName": "形式が無効です。形式：model、model:tag、または namespace/model:tag",
+  "modelEngines.modelNotFound": "Ollamaライブラリにモデルが見つかりません。ollama.com/library で確認してください",
+  "modelEngines.validating": "確認中...",
 
   "tts.title": "テキスト読み上げ",
   "tts.exportAll": "すべてエクスポート",
