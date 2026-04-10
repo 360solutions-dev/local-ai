@@ -552,17 +552,30 @@ export function useAllProviderModels(providers: ProviderData[]) {
 
 export interface ModelConfigData {
   chat_model: string;
+  chat_provider_id: string | null;
+  chat_provider_name: string;
   embedding_model: string;
+  embedding_provider_id: string | null;
+  embedding_provider_name: string;
   tts_model: string;
+  tts_provider_id: string | null;
+  tts_provider_name: string;
   summarizer_model: string;
 }
+
+const EMPTY_MODEL_CONFIG: ModelConfigData = {
+  chat_model: "", chat_provider_id: null, chat_provider_name: "",
+  embedding_model: "", embedding_provider_id: null, embedding_provider_name: "",
+  tts_model: "", tts_provider_id: null, tts_provider_name: "",
+  summarizer_model: "",
+};
 
 export function useModelConfig() {
   return useQuery({
     queryKey: ["system", "model-config"],
     queryFn: async () => {
       const res = await apiGet<{ config: ModelConfigData }>("/api/system/model-config/");
-      if (!res.ok) return { chat_model: "", embedding_model: "", tts_model: "", summarizer_model: "" } as ModelConfigData;
+      if (!res.ok) return EMPTY_MODEL_CONFIG;
       return res.data.config;
     },
   });

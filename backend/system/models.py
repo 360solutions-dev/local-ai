@@ -72,8 +72,17 @@ class ModelConfig(BaseModel):
     """Singleton — persists which model is assigned to each feature."""
 
     chat_model = models.CharField(max_length=200, blank=True, default="")
+    chat_provider = models.ForeignKey(
+        Provider, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     embedding_model = models.CharField(max_length=200, blank=True, default="")
+    embedding_provider = models.ForeignKey(
+        Provider, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     tts_model = models.CharField(max_length=200, blank=True, default="")
+    tts_provider = models.ForeignKey(
+        Provider, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     summarizer_model = models.CharField(max_length=200, blank=True, default="")
 
     class Meta:

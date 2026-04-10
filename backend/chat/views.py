@@ -234,11 +234,44 @@ class ConversationMessagesView(APIView):
         model = serializer.validated_data.get("model") or None
         file_filter = serializer.validated_data.get("file_filter") or None
         ai_error = None
+
+        # Look up chat provider from ModelConfig for routing
+        provider_base_url = None
+        provider_type = None
+        try:
+            from system.models import ModelConfig
+            config = ModelConfig.get_or_create_singleton()
+            if config.chat_provider:
+                provider = config.chat_provider
+                provider_base_url = provider.endpoint.rstrip("/")
+                provider_type = provider.type
+                if not model:
+                    model = config.chat_model or None
+
+                # Resolve Docker hostnames for container-to-container comms
+                from urllib.parse import urlparse
+                parsed = urlparse(provider_base_url)
+                hostname = parsed.hostname or ""
+                port = parsed.port or (443 if parsed.scheme == "https" else 80)
+                docker_map = {
+                    ("localhost", 11434): "ollama",
+                    ("127.0.0.1", 11434): "ollama",
+                }
+                docker_host = docker_map.get((hostname, port))
+                if docker_host:
+                    provider_base_url = f"{parsed.scheme}://{docker_host}:{port}"
+        except Exception:
+            pass  # Fall back to RAG defaults
+
         try:
             rag_url = urljoin(RAG_SERVICE_URL, "/api/ask")
             payload = {"question": content}
             if model:
                 payload["model"] = model
+            if provider_base_url:
+                payload["base_url"] = provider_base_url
+            if provider_type:
+                payload["provider_type"] = provider_type
             if file_filter:
                 payload["file_filter"] = file_filter
             resp = requests.post(rag_url, json=payload, headers=_rag_headers(), timeout=300)

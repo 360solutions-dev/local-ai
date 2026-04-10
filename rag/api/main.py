@@ -203,6 +203,8 @@ def delete_model(model_name: str):
 class AskRequest(PydanticModel):
     question: str
     model: str | None = None
+    base_url: str | None = None
+    provider_type: str | None = None  # "ollama" or "openai"
     file_filter: str | None = None
 
 
@@ -260,13 +262,15 @@ def invalidate_index_cache():
 
 @app.post("/api/ask", dependencies=[Depends(verify_api_key)])
 def ask_question(req: AskRequest):
-    """Run RAG: retrieve relevant docs and generate an answer via Ollama."""
-    from config import LLM_MODEL, TOP_K
+    """Run RAG: retrieve relevant docs and generate an answer via the configured provider."""
+    from config import LLM_MODEL, OLLAMA_BASE_URL, TOP_K
 
     from rag_chain import answer_question
     from vector_store import VectorStoreManager
 
     llm_model = req.model or LLM_MODEL
+    llm_base_url = req.base_url or OLLAMA_BASE_URL
+    llm_provider_type = req.provider_type or "ollama"
 
     embeddings, cached_vs = _get_cached_index()
     if cached_vs is None:
@@ -282,6 +286,7 @@ def ask_question(req: AskRequest):
         retriever = vs.get_retriever(k=retrieve_k)
         answer, docs = answer_question(
             question=req.question, retriever=retriever, model=llm_model,
+            base_url=llm_base_url, provider_type=llm_provider_type,
             file_filter=req.file_filter,
         )
 

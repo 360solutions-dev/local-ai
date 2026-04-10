@@ -74,10 +74,13 @@ export default function ModelEnginesClient() {
   const [connectError, setConnectError] = useState<string | null>(null);
   const [isTesting, setIsTesting] = useState(false);
 
-  // Feature model mapping state
+  // Feature model mapping state — stores "providerId::modelName" or just "modelName" for built-ins
   const [chatModel, setChatModel] = useState("");
+  const [chatProviderId, setChatProviderId] = useState<string | null>(null);
   const [embeddingModel, setEmbeddingModel] = useState("");
+  const [embeddingProviderId, setEmbeddingProviderId] = useState<string | null>(null);
   const [ttsModel, setTtsModel] = useState("");
+  const [ttsProviderId, setTtsProviderId] = useState<string | null>(null);
 
   // Real API hooks
   const { data: ollamaModels = [], isLoading: modelsLoading } = useOllamaModels();
@@ -99,10 +102,30 @@ export default function ModelEnginesClient() {
   useEffect(() => {
     if (modelConfig) {
       if (modelConfig.chat_model) setChatModel(modelConfig.chat_model);
+      setChatProviderId(modelConfig.chat_provider_id ?? null);
       if (modelConfig.embedding_model) setEmbeddingModel(modelConfig.embedding_model);
+      setEmbeddingProviderId(modelConfig.embedding_provider_id ?? null);
       if (modelConfig.tts_model) setTtsModel(modelConfig.tts_model);
+      setTtsProviderId(modelConfig.tts_provider_id ?? null);
     }
   }, [modelConfig]);
+
+  // Auto-select model when only one option is available and nothing is selected yet
+  useEffect(() => {
+    if (allProviderModels.length === 0) return;
+
+    const chatModels = allProviderModels.filter((m) => !/embed/i.test(m.name));
+    const embeddingModels = allProviderModels.filter((m) => /embed/i.test(m.name));
+
+    if (!chatModel && chatModels.length === 1) {
+      setChatModel(chatModels[0].name);
+      setChatProviderId(chatModels[0].provider_id);
+    }
+    if (!embeddingModel && embeddingModels.length === 1) {
+      setEmbeddingModel(embeddingModels[0].name);
+      setEmbeddingProviderId(embeddingModels[0].provider_id);
+    }
+  }, [allProviderModels, chatModel, embeddingModel]);
 
   // Available providers = templates that are NOT already connected
   const connectedNames = new Set(providers.map((p) => p.name));
@@ -305,12 +328,36 @@ export default function ModelEnginesClient() {
     setShowConnectModal(true);
   }
 
+  function handleModelSelect(
+    value: string,
+    setModel: (v: string) => void,
+    setProvider: (v: string | null) => void,
+  ) {
+    // value format: "providerId::modelName" or "modelName" for built-ins
+    if (value.includes("::")) {
+      const [pid, name] = value.split("::", 2);
+      setModel(name);
+      setProvider(pid);
+    } else {
+      setModel(value);
+      setProvider(null);
+    }
+  }
+
+  function modelSelectValue(model: string, providerId: string | null): string {
+    if (providerId && model) return `${providerId}::${model}`;
+    return model;
+  }
+
   function handleSaveModelConfig() {
     updateModelConfigMutation.mutate(
       {
         chat_model: chatModel,
+        chat_provider_id: chatProviderId,
         embedding_model: embeddingModel,
+        embedding_provider_id: embeddingProviderId,
         tts_model: ttsModel,
+        tts_provider_id: ttsProviderId,
       },
       {
         onSuccess: () => showToastMsg(t("modelEngines.configSaved")),
@@ -716,13 +763,13 @@ export default function ModelEnginesClient() {
               {t("sidebar.chatWithFiles")}
             </label>
             <select
-              value={chatModel}
-              onChange={(e) => setChatModel(e.target.value)}
+              value={modelSelectValue(chatModel, chatProviderId)}
+              onChange={(e) => handleModelSelect(e.target.value, setChatModel, setChatProviderId)}
               className="w-full px-3 py-2.5 bg-bg border border-border rounded-lg text-text font-body text-[0.85rem] outline-none focus:border-border-focus appearance-none cursor-pointer"
             >
               <option value="">{t("modelEngines.selectModel")}</option>
-              {allProviderModels.map((m) => (
-                <option key={`${m.provider_id}-${m.id}`} value={m.name}>
+              {allProviderModels.filter((m) => !/embed/i.test(m.name)).map((m) => (
+                <option key={`${m.provider_id}-${m.id}`} value={`${m.provider_id}::${m.name}`}>
                   {m.name} ({m.provider_name})
                 </option>
               ))}
@@ -733,13 +780,13 @@ export default function ModelEnginesClient() {
               {t("modelEngines.embeddings")}
             </label>
             <select
-              value={embeddingModel}
-              onChange={(e) => setEmbeddingModel(e.target.value)}
+              value={modelSelectValue(embeddingModel, embeddingProviderId)}
+              onChange={(e) => handleModelSelect(e.target.value, setEmbeddingModel, setEmbeddingProviderId)}
               className="w-full px-3 py-2.5 bg-bg border border-border rounded-lg text-text font-body text-[0.85rem] outline-none focus:border-border-focus appearance-none cursor-pointer"
             >
               <option value="">{t("modelEngines.selectModel")}</option>
-              {allProviderModels.map((m) => (
-                <option key={`${m.provider_id}-${m.id}`} value={m.name}>
+              {allProviderModels.filter((m) => /embed/i.test(m.name)).map((m) => (
+                <option key={`${m.provider_id}-${m.id}`} value={`${m.provider_id}::${m.name}`}>
                   {m.name} ({m.provider_name})
                 </option>
               ))}
@@ -752,15 +799,15 @@ export default function ModelEnginesClient() {
               {t("sidebar.textToAudio")}
             </label>
             <select
-              value={ttsModel}
-              onChange={(e) => setTtsModel(e.target.value)}
+              value={modelSelectValue(ttsModel, ttsProviderId)}
+              onChange={(e) => handleModelSelect(e.target.value, setTtsModel, setTtsProviderId)}
               className="w-full px-3 py-2.5 bg-bg border border-border rounded-lg text-text font-body text-[0.85rem] outline-none focus:border-border-focus appearance-none cursor-pointer"
             >
               <option value="">{t("modelEngines.selectModel")}</option>
               <option value="piper-en-amy">piper-en-amy (Built-in)</option>
               <option value="xtts-v2">xtts-v2</option>
-              {allProviderModels.map((m) => (
-                <option key={`${m.provider_id}-${m.id}`} value={m.name}>
+              {allProviderModels.filter((m) => !/embed/i.test(m.name)).map((m) => (
+                <option key={`${m.provider_id}-${m.id}`} value={`${m.provider_id}::${m.name}`}>
                   {m.name} ({m.provider_name})
                 </option>
               ))}
