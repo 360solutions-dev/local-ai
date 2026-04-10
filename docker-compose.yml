@@ -1,4 +1,17 @@
 services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - nextjs
+      - django
+    networks:
+      - local-ai-net
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -44,11 +57,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       DJANGO_DEBUG: ${DJANGO_DEBUG}
-      ALLOWED_HOSTS: localhost,127.0.0.1,django
+      ALLOWED_HOSTS: localhost,127.0.0.1,django,api.local-ai.localhost
       RAG_SERVICE_URL: http://rag:8080
       RAG_API_KEY: ${RAG_API_KEY}
-    ports:
-      - "8000:8000"
     volumes:
       - ./backend:/app
     depends_on:
@@ -64,8 +75,6 @@ services:
       BACKEND_URL: http://django:8000
       RAG_URL: http://rag:8080
       RAG_API_KEY: ${RAG_API_KEY}
-    ports:
-      - "3000:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -85,7 +94,6 @@ services:
       RAG_API_KEY: ${RAG_API_KEY}
     ports:
       - "8501:8501"
-      - "8080:8080"
     volumes:
       - ./rag:/app
     depends_on:

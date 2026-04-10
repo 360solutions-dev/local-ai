@@ -314,6 +314,78 @@ Settings → Advanced tab — previously all hardcoded/non-functional, now fully
 
 ---
 
+### 18. Flickering Fixes & Dynamic Data (April 10, 2026)
+
+Fixed page flickering issues across the entire app and made static data dynamic.
+
+**Flickering — `useHasActiveProvider` rework:**
+- Changed `useHasActiveProvider()` in `hooks/use-chat.ts` from returning a bare `boolean` to `{ active: boolean, isLoading: boolean }`
+- **Chat page** — shows spinner while provider/model state loads; previously flashed "No provider" screen for ~1 second
+- **Text-to-Audio page** — same spinner guard added
+- **Model Engines page** — updated to match new hook signature
+
+**Factory Reset flicker:**
+- `SettingsClient.tsx` — added `resettingFactory` flag; immediately shows full-screen "Resetting instance..." overlay on confirm, preventing the ConfirmDialog from flashing back before redirect
+
+**Onboarding — Dynamic health status:**
+- "All services running" now checks real system health via `useSystemHealth()`
+- Shows spinner + "Checking services..." while loading
+- Shows "Some services are offline" when services are down
+- Auto-updates every 10 seconds without page reload
+
+**Login page — Dynamic host:**
+- Replaced hardcoded `localhost:3000` with `window.location.host`
+
+**System health polling:**
+- `useSystemHealth` refetch interval changed from 30s → 10s for faster status updates
+
+**Chat blocking screen — Sidebar navigation:**
+- When no provider/model is available, the shared `<Sidebar>` component is now visible so users can navigate
+- Previously the entire screen was replaced with no navigation
+
+**Arrow icons:**
+- Replaced all `&rarr;` HTML entities with Lucide `<ArrowRight />` component on blocking screens
+
+**i18n keys added (all 6 languages):**
+- `onboarding.checkingServices`
+- `onboarding.someServicesOffline`
+- `settings.advanced.factoryResetting`
+
+**Files Modified:**
+- `frontend/hooks/use-chat.ts`
+- `frontend/app/chat/ChatClient.tsx`
+- `frontend/app/text-to-audio/TextToAudioClient.tsx`
+- `frontend/app/model-engines/ModelEnginesClient.tsx`
+- `frontend/app/settings/SettingsClient.tsx`
+- `frontend/app/onboarding/OnboardingClient.tsx`
+- `frontend/app/login/LoginClient.tsx`
+- `frontend/lib/i18n/translations/{en,es,fr,de,ja,zh}.ts`
+
+---
+
+### 19. Caddy Reverse Proxy — Custom Local Domain (April 10, 2026)
+
+Added Caddy as a reverse proxy so the app runs on a clean custom domain instead of `localhost:PORT`:
+
+| URL | Routes to |
+|-----|-----------|
+| `http://local-ai.localhost` | Next.js frontend (port 3000) |
+| `http://api.local-ai.localhost` | Django backend (port 8000) |
+
+**Changes:**
+- Added `caddy` service (caddy:2-alpine) to `docker-compose.yml` listening on port 80
+- Created `Caddyfile` with HTTP-only reverse proxy rules
+- Removed direct host port mappings from `nextjs` and `django` services (traffic goes through Caddy)
+- Added `api.local-ai.localhost` to Django's `ALLOWED_HOSTS`
+- RAG service `8080` host port removed (Caddy doesn't conflict, RAG still reachable internally)
+
+**Cross-platform note:** `*.localhost` resolves automatically on macOS but requires a hosts file entry on Windows/Linux:
+```
+127.0.0.1 local-ai.localhost api.local-ai.localhost
+```
+
+---
+
 ## What Was NOT Changed
 
 - All RAG logic (app.py, document_loader.py, vector_store.py, rag_chain.py, query_history.py) — only moved to `rag/`, code untouched
@@ -338,7 +410,12 @@ docker compose exec ollama ollama pull llama3.1:8b
 docker compose exec ollama ollama pull nomic-embed-text
 
 # Open in browser
-open http://localhost:3000
+open http://local-ai.localhost
+```
+
+**Note (Windows/Linux only):** Add to your hosts file first:
+```
+127.0.0.1 local-ai.localhost api.local-ai.localhost
 ```
 
 First visit → Onboarding → Create admin → Dashboard.

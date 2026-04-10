@@ -1,0 +1,7 @@
+http://local-ai.localhost {
+	reverse_proxy nextjs:3000
+}
+
+http://api.local-ai.localhost {
+	reverse_proxy django:8000
+}
