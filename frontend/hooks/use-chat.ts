@@ -201,7 +201,7 @@ export function useSystemHealth() {
       if (!res.ok) return { status: "offline", ollama: false, database: false } as SystemHealth;
       return res.data;
     },
-    refetchInterval: 30_000,
+    refetchInterval: 10_000,
   });
 }
 
@@ -388,13 +388,15 @@ export function useProviders() {
   });
 }
 
-export function useHasActiveProvider() {
-  const { data: providers = [] } = useProviders();
-  const { data: health } = useSystemHealth();
-  return providers.some((p) => {
+export function useHasActiveProvider(): { active: boolean; isLoading: boolean } {
+  const { data: providers = [], isLoading: providersLoading } = useProviders();
+  const { data: health, isLoading: healthLoading } = useSystemHealth();
+  const isLoading = providersLoading || healthLoading;
+  const active = providers.some((p) => {
     if (p.name === "Ollama") return p.is_connected && (health?.ollama ?? true);
     return p.is_connected;
   });
+  return { active, isLoading };
 }
 
 export function useCreateProvider() {

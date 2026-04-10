@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useHasActiveProvider } from "@/hooks/use-chat";
 
@@ -97,7 +98,7 @@ function formatTime(seconds: number) {
 
 export default function TextToAudioClient() {
   const { t } = useTranslation();
-  const hasActiveProvider = useHasActiveProvider();
+  const { active: hasActiveProvider, isLoading: providerLoading } = useHasActiveProvider();
   const [text, setText] = useState("");
   const [voice, setVoice] = useState(voices[0]);
   const [format, setFormat] = useState(formats[0]);
@@ -234,6 +235,15 @@ export default function TextToAudioClient() {
     : "0:00";
   const totalTime = activeEntry ? formatTime(activeEntry.duration) : "0:00";
 
+  // Show spinner while provider state is loading (prevents flicker)
+  if (providerLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   // Block entire page if no provider
   if (!hasActiveProvider) {
     return (
@@ -278,7 +288,7 @@ export default function TextToAudioClient() {
             href="/model-engines"
             className="inline-flex items-center justify-center gap-2 w-full py-3.5 px-8 bg-accent text-bg border-none rounded-lg font-body text-base font-semibold no-underline cursor-pointer transition-all duration-200 shadow-[0_0_30px_rgba(52,211,153,0.3)] hover:-translate-y-0.5 hover:shadow-[0_0_50px_rgba(52,211,153,0.3)]"
           >
-            {t("sidebar.modelEngines")} &rarr;
+            {t("sidebar.modelEngines")} <ArrowRight size={18} />
           </Link>
         </div>
       </div>

@@ -205,7 +205,7 @@ export default function LoginClient() {
         </div>
 
         <div className="text-center mt-6 text-[0.82rem] text-text-dim">
-          {t("login.runningOn")} <strong className="text-text-muted">localhost:3000</strong> · {t("login.allDataLocal")}
+          {t("login.runningOn")} <strong className="text-text-muted">{typeof window !== "undefined" ? window.location.host : ""}</strong> · {t("login.allDataLocal")}
         </div>
         <div className="font-mono text-[0.72rem] text-text-dim text-center mt-8 opacity-60">
           local-ai.run v1.0.0

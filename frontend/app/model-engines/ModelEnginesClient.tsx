@@ -101,7 +101,7 @@ export default function ModelEnginesClient() {
     (tpl) => !connectedNames.has(tpl.name)
   );
 
-  const hasActiveProvider = useHasActiveProvider();
+  const { active: hasActiveProvider } = useHasActiveProvider();
 
   function showToastMsg(msg: string) {
     setToast(msg);

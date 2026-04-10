@@ -27,6 +27,7 @@ const inputClass = "w-full px-4 py-2.5 bg-bg-card border border-border rounded-l
 export default function SettingsClient() {
   const [activeTab, setActiveTab] = useState("general");
   const [toast, setToast] = useState("");
+  const [resettingFactory, setResettingFactory] = useState(false);
   const { theme, setTheme } = useTheme();
   const { accentColor, setAccentColor } = useAccentColor();
   const { t } = useTranslation();
@@ -116,6 +117,16 @@ export default function SettingsClient() {
 
   if (isLoading) {
     return <SettingsSkeleton />;
+  }
+
+  // Full-screen overlay while factory reset is in progress / redirecting
+  if (resettingFactory) {
+    return (
+      <div className="fixed inset-0 z-[9999] bg-bg flex flex-col items-center justify-center gap-4">
+        <div className="w-8 h-8 border-3 border-accent border-t-transparent rounded-full animate-spin" />
+        <p className="text-text-muted font-mono text-[0.85rem]">{t("settings.advanced.factoryResetting")}</p>
+      </div>
+    );
   }
 
   return (
@@ -464,7 +475,10 @@ export default function SettingsClient() {
             requireTypedConfirmation="FACTORY RESET"
             loading={factoryReset.isPending}
             onCancel={() => setDangerAction(null)}
-            onConfirm={() => factoryReset.mutate()}
+            onConfirm={() => {
+              setResettingFactory(true);
+              factoryReset.mutate();
+            }}
           />
         </div>
       )}

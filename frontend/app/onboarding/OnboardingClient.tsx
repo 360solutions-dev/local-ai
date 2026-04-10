@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { useRegister } from "@/hooks/use-auth";
+import { useSystemHealth } from "@/hooks/use-chat";
 import { useTranslation } from "@/lib/i18n";
 
 export default function OnboardingClient() {
@@ -13,6 +14,9 @@ export default function OnboardingClient() {
   const [error, setError] = useState("");
 
   const register = useRegister();
+  const { data: health, isLoading: healthLoading } = useSystemHealth();
+
+  const servicesOnline = !healthLoading && health?.ollama && health?.database;
 
   function handleAdminSubmit(e: FormEvent) {
     e.preventDefault();
@@ -99,7 +103,16 @@ export default function OnboardingClient() {
             <div className="bg-bg-elevated border border-border rounded-lg px-4 py-3 font-mono text-[0.78rem] text-text-dim leading-relaxed mb-8">
               <span className="text-accent">$</span> docker compose up -d
               <br />
-              <span className="text-accent">{t("onboarding.allServicesRunning")}</span>
+              {healthLoading ? (
+                <span className="text-text-dim flex items-center gap-2">
+                  <span className="inline-block w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                  {t("onboarding.checkingServices")}
+                </span>
+              ) : servicesOnline ? (
+                <span className="text-accent">{t("onboarding.allServicesRunning")}</span>
+              ) : (
+                <span className="text-accent-warm">{t("onboarding.someServicesOffline")}</span>
+              )}
             </div>
 
             <button className={btnPrimary} onClick={() => setStep(2)}>
