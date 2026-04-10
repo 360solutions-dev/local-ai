@@ -5,6 +5,8 @@ from . import views
 urlpatterns = [
     path("info/", views.InstanceInfoView.as_view(), name="system-info"),
     path("settings/", views.InstanceSettingsView.as_view(), name="system-settings"),
+    path("storage/", views.StorageInfoView.as_view(), name="system-storage"),
+    path("storage/clear-cache/", views.ClearCacheView.as_view(), name="system-clear-cache"),
     path("export/chat-history/", views.ExportChatHistoryView.as_view(), name="export-chat-history"),
     path("export/settings/", views.ExportSettingsView.as_view(), name="export-settings"),
     path("export/all/", views.ExportAllDataView.as_view(), name="export-all"),

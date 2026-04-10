@@ -57,6 +57,131 @@ def _format_uptime(seconds):
     return ", ".join(parts) or "just started"
 
 
+class StorageInfoView(APIView):
+    """Aggregate storage metrics from host disk, Ollama, RAG, and PostgreSQL."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        import shutil
+
+        breakdown = {
+            "models": 0,
+            "uploaded_files": 0,
+            "vector_embeddings": 0,
+            "chat_history": 0,
+        }
+
+        # 1. Host disk usage (container sees the host filesystem)
+        try:
+            disk = shutil.disk_usage("/")
+            disk_total = disk.total
+            disk_used = disk.used
+            disk_free = disk.free
+        except Exception:
+            disk_total = disk_used = disk_free = 0
+
+        # 2. Ollama models — sum sizes, separating user models from system models
+        #    The embedding model (nomic-embed-text) is auto-pulled for RAG and
+        #    shouldn't count as a user-downloaded model.
+        SYSTEM_MODELS = {"nomic-embed-text"}
+        try:
+            ollama_url = os.environ.get("OLLAMA_HOST", "http://ollama:11434")
+            resp = http_requests.get(
+                f"{ollama_url.rstrip('/')}/api/tags", timeout=5
+            )
+            resp.raise_for_status()
+            models = resp.json().get("models", [])
+            user_total = 0
+            system_total = 0
+            for m in models:
+                name = m.get("name", "")
+                size = m.get("size", 0)
+                # Check if any system model name is a prefix of this model's name
+                if any(name.startswith(s) for s in SYSTEM_MODELS):
+                    system_total += size
+                else:
+                    user_total += size
+            breakdown["models"] = user_total
+            breakdown["system_models"] = system_total
+        except Exception as e:
+            logger.warning("Failed to fetch Ollama model sizes: %s", e)
+
+        # 3. RAG service — uploaded files + vector store size
+        try:
+            rag_url = urljoin(RAG_SERVICE_URL, "/api/storage-info")
+            resp = http_requests.get(rag_url, headers=_rag_headers(), timeout=10)
+            resp.raise_for_status()
+            rag_data = resp.json()
+            breakdown["uploaded_files"] = rag_data.get("uploaded_files_bytes", 0)
+            breakdown["vector_embeddings"] = rag_data.get("vector_db_bytes", 0)
+        except Exception as e:
+            logger.warning("Failed to fetch RAG storage info: %s", e)
+
+        # 4. PostgreSQL — only chat-related tables
+        try:
+            from django.db import connection as db_conn
+
+            with db_conn.cursor() as cursor:
+                # Only report size if there are actual rows, otherwise
+                # empty tables still consume ~72 KB of PostgreSQL overhead.
+                cursor.execute("""
+                    SELECT COALESCE(SUM(cnt), 0) FROM (
+                        SELECT count(*) AS cnt FROM messages
+                        UNION ALL
+                        SELECT count(*) FROM conversations
+                        UNION ALL
+                        SELECT count(*) FROM query_history
+                    ) t
+                """)
+                row_count = cursor.fetchone()[0]
+                if row_count > 0:
+                    cursor.execute("""
+                        SELECT COALESCE(SUM(pg_total_relation_size(c.oid)), 0)
+                        FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = 'public'
+                          AND c.relkind = 'r'
+                          AND c.relname IN ('messages', 'conversations', 'query_history')
+                    """)
+                    breakdown["chat_history"] = cursor.fetchone()[0]
+        except Exception as e:
+            logger.warning("Failed to fetch chat history size: %s", e)
+
+        total_used = sum(breakdown.values())
+
+        return Response(
+            {
+                "disk": {
+                    "total": disk_total,
+                    "used": disk_used,
+                    "free": disk_free,
+                },
+                "breakdown": breakdown,
+                "total_tracked": total_used,
+            }
+        )
+
+
+class ClearCacheView(APIView):
+    """Clear vector DB cache via the RAG service."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            rag_url = urljoin(RAG_SERVICE_URL, "/api/clear-cache")
+            resp = http_requests.post(rag_url, headers=_rag_headers(), timeout=30)
+            resp.raise_for_status()
+            return Response(resp.json())
+        except Exception as e:
+            logger.warning("Clear cache failed: %s", e)
+            return Response(
+                {"error": {"code": "CACHE_ERROR", "message": str(e)}},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
 class InstanceInfoView(APIView):
     permission_classes = [IsAuthenticated]
 

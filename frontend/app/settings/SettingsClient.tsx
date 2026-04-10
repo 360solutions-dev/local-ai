@@ -5,6 +5,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { useAccentColor, type AccentColor } from "@/hooks/use-accent-color";
 import { useCurrentUser, useUpdateProfile, useChangePassword, useUpdateNotificationPreferences } from "@/hooks/use-auth";
 import { useInstanceInfo, useInstanceSettings, useUpdateInstanceSettings, useExportChatHistory, useExportSettings, useExportAllData, useResetInstance, useDeleteAllData, useFactoryReset } from "@/hooks/use-advanced-settings";
+import { useStorageInfo, useClearCache, formatBytes } from "@/hooks/use-storage";
 import { SettingsSkeleton } from "@/components/ui/Skeleton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useTranslation, useLanguage, type Locale } from "@/lib/i18n";
@@ -102,6 +103,21 @@ export default function SettingsClient() {
   const deleteAllData = useDeleteAllData();
   const factoryReset = useFactoryReset();
   const [dangerAction, setDangerAction] = useState<null | "reset" | "delete" | "factory">(null);
+
+  // Storage — real data from backend
+  const { data: storageInfo, isLoading: storageLoading } = useStorageInfo();
+  const clearCache = useClearCache();
+  const [maxFileSize, setMaxFileSize] = useState(50);
+  const [maxFilesPerChat, setMaxFilesPerChat] = useState(10);
+  const [storageSettingsLoaded, setStorageSettingsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (instanceSettings && !storageSettingsLoaded) {
+      setMaxFileSize(instanceSettings.max_file_size_mb ?? 50);
+      setMaxFilesPerChat(instanceSettings.max_files_per_chat ?? 10);
+      setStorageSettingsLoaded(true);
+    }
+  }, [instanceSettings, storageSettingsLoaded]);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -260,33 +276,73 @@ export default function SettingsClient() {
           <section>
             <h2 className="text-lg font-semibold mb-1">{t("settings.storage.title")}</h2>
             <p className="text-text-muted text-[0.88rem] font-light mb-5">{t("settings.storage.subtitle")}</p>
-            <div className="bg-bg-card border border-border rounded-xl p-5 mb-5">
-              <div className="flex justify-between py-2 border-b border-border"><span className="text-text-muted text-[0.88rem]">{t("settings.storage.totalAllocated")}</span><span className="font-mono text-[0.88rem]">50.0 GB</span></div>
-              <div className="flex justify-between py-2 border-b border-border"><span className="text-text-muted text-[0.88rem]">{t("settings.storage.used")}</span><span className="font-mono text-[0.88rem] text-accent">12.4 GB</span></div>
-              <div className="flex justify-between py-2"><span className="text-text-muted text-[0.88rem]">{t("settings.storage.available")}</span><span className="font-mono text-[0.88rem]">37.6 GB</span></div>
-            </div>
-            <div className="mb-2">
-              <div className="h-2 bg-bg-card rounded-full overflow-hidden"><div className="h-full bg-linear-to-r from-accent to-accent-secondary rounded-full" style={{ width: "24.8%" }} /></div>
-              <div className="flex justify-between font-mono text-[0.72rem] text-text-dim mt-1.5"><span>{t("settings.storage.used_pct", { pct: "24.8" })}</span><span>{t("settings.storage.free", { size: "37.6 GB" })}</span></div>
-            </div>
+            {storageLoading || !storageInfo ? (
+              <div className="bg-bg-card border border-border rounded-xl p-5 mb-5 animate-pulse">
+                <div className="h-4 bg-border rounded w-1/2 mb-3" />
+                <div className="h-4 bg-border rounded w-1/3 mb-3" />
+                <div className="h-4 bg-border rounded w-1/3" />
+              </div>
+            ) : (
+              <>
+                <div className="bg-bg-card border border-border rounded-xl p-5 mb-5">
+                  <div className="flex justify-between py-2 border-b border-border">
+                    <span className="text-text-muted text-[0.88rem]">{t("settings.storage.totalAllocated")}</span>
+                    <span className="font-mono text-[0.88rem]">{formatBytes(storageInfo.disk.total)}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-border">
+                    <span className="text-text-muted text-[0.88rem]">{t("settings.storage.used")}</span>
+                    <span className="font-mono text-[0.88rem] text-accent">{formatBytes(storageInfo.disk.used)}</span>
+                  </div>
+                  <div className="flex justify-between py-2">
+                    <span className="text-text-muted text-[0.88rem]">{t("settings.storage.available")}</span>
+                    <span className="font-mono text-[0.88rem]">{formatBytes(storageInfo.disk.free)}</span>
+                  </div>
+                </div>
+                {(() => {
+                  const pct = storageInfo.disk.total > 0 ? ((storageInfo.disk.used / storageInfo.disk.total) * 100).toFixed(1) : "0";
+                  return (
+                    <div className="mb-2">
+                      <div className="h-2 bg-bg-card rounded-full overflow-hidden">
+                        <div className="h-full bg-linear-to-r from-accent to-accent-secondary rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="flex justify-between font-mono text-[0.72rem] text-text-dim mt-1.5">
+                        <span>{t("settings.storage.used_pct", { pct })}</span>
+                        <span>{t("settings.storage.free", { size: formatBytes(storageInfo.disk.free) })}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </>
+            )}
           </section>
 
           <section>
             <h2 className="text-lg font-semibold mb-4">{t("settings.storage.breakdown")}</h2>
-            <div className="bg-bg-card border border-border rounded-xl p-5">
-              {[
-                [`🧠 ${t("settings.storage.models")}`, "8.2 GB"],
-                [`📁 ${t("settings.storage.uploadedFiles")}`, "2.8 GB"],
-                [`🔗 ${t("settings.storage.vectorEmbeddings")}`, "940 MB"],
-                [`💬 ${t("settings.storage.chatHistory")}`, "86 MB"],
-                [`🔊 ${t("settings.storage.generatedAudio")}`, "340 MB"],
-              ].map(([label, value], i, arr) => (
-                <div key={label} className={`flex justify-between py-2 ${i < arr.length - 1 ? "border-b border-border" : ""}`}>
-                  <span className="text-text-muted text-[0.88rem]">{label}</span>
-                  <span className="font-mono text-[0.88rem]">{value}</span>
-                </div>
-              ))}
-            </div>
+            {storageLoading || !storageInfo ? (
+              <div className="bg-bg-card border border-border rounded-xl p-5 animate-pulse">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className={`flex justify-between py-2 ${i < 4 ? "border-b border-border" : ""}`}>
+                    <div className="h-4 bg-border rounded w-1/3" />
+                    <div className="h-4 bg-border rounded w-16" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-bg-card border border-border rounded-xl p-5">
+                {([
+                  [`🧠 ${t("settings.storage.models")}`, storageInfo.breakdown.models],
+                  [`⚙️ ${t("settings.storage.systemModels")}`, storageInfo.breakdown.system_models],
+                  [`📁 ${t("settings.storage.uploadedFiles")}`, storageInfo.breakdown.uploaded_files],
+                  [`🔗 ${t("settings.storage.vectorEmbeddings")}`, storageInfo.breakdown.vector_embeddings],
+                  [`💬 ${t("settings.storage.chatHistory")}`, storageInfo.breakdown.chat_history],
+                ] as [string, number][]).map(([label, bytes], i, arr) => (
+                  <div key={label} className={`flex justify-between py-2 ${i < arr.length - 1 ? "border-b border-border" : ""}`}>
+                    <span className="text-text-muted text-[0.88rem]">{label}</span>
+                    <span className="font-mono text-[0.88rem]">{formatBytes(bytes)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           <section>
@@ -294,18 +350,65 @@ export default function SettingsClient() {
             <div className="grid grid-cols-2 gap-4 max-[600px]:grid-cols-1">
               <div>
                 <label className="block font-mono text-[0.72rem] text-text-muted tracking-wide uppercase mb-1.5">{t("settings.storage.maxFileSize")}</label>
-                <select className={selectClass} defaultValue="50"><option>25 MB</option><option value="50">50 MB</option><option>100 MB</option><option>200 MB</option><option>500 MB</option></select>
+                <select
+                  className={selectClass}
+                  value={maxFileSize}
+                  onChange={(e) => setMaxFileSize(Number(e.target.value))}
+                >
+                  <option value={25}>25 MB</option>
+                  <option value={50}>50 MB</option>
+                  <option value={100}>100 MB</option>
+                  <option value={200}>200 MB</option>
+                  <option value={500}>500 MB</option>
+                </select>
               </div>
               <div>
                 <label className="block font-mono text-[0.72rem] text-text-muted tracking-wide uppercase mb-1.5">{t("settings.storage.maxFilesPerChat")}</label>
-                <select className={selectClass} defaultValue="10"><option>5</option><option value="10">10</option><option>25</option><option>50</option><option>{t("settings.storage.unlimited")}</option></select>
+                <select
+                  className={selectClass}
+                  value={maxFilesPerChat}
+                  onChange={(e) => setMaxFilesPerChat(Number(e.target.value))}
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={0}>{t("settings.storage.unlimited")}</option>
+                </select>
               </div>
             </div>
           </section>
 
           <div className="flex gap-3 pt-4">
-            <button type="button" className="px-6 py-2.5 bg-accent text-bg border-none rounded-lg font-body text-[0.92rem] font-semibold cursor-pointer transition-all hover:-translate-y-0.5" onClick={() => showToast(t("settings.saved"))}>{t("common.save")}</button>
-            <button type="button" className="px-6 py-2.5 bg-transparent text-text-muted border border-border rounded-lg font-body text-[0.92rem] cursor-pointer transition-all hover:border-text-muted hover:text-text">{t("settings.storage.clearCache")}</button>
+            <button
+              type="button"
+              className="px-6 py-2.5 bg-accent text-bg border-none rounded-lg font-body text-[0.92rem] font-semibold cursor-pointer transition-all hover:-translate-y-0.5 disabled:opacity-50"
+              disabled={updateInstanceSettings.isPending}
+              onClick={() => {
+                updateInstanceSettings.mutate(
+                  { max_file_size_mb: maxFileSize, max_files_per_chat: maxFilesPerChat },
+                  {
+                    onSuccess: () => showToast(t("settings.saved")),
+                    onError: (err) => showToast(err.message),
+                  },
+                );
+              }}
+            >
+              {updateInstanceSettings.isPending ? t("common.saving") || "Saving..." : t("common.save")}
+            </button>
+            <button
+              type="button"
+              className="px-6 py-2.5 bg-transparent text-text-muted border border-border rounded-lg font-body text-[0.92rem] cursor-pointer transition-all hover:border-text-muted hover:text-text disabled:opacity-50"
+              disabled={clearCache.isPending}
+              onClick={() => {
+                clearCache.mutate(undefined, {
+                  onSuccess: (data) => showToast(data?.message || "Cache cleared."),
+                  onError: (err) => showToast(err.message),
+                });
+              }}
+            >
+              {clearCache.isPending ? "Clearing..." : t("settings.storage.clearCache")}
+            </button>
           </div>
         </div>
       )}

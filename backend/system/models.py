@@ -11,6 +11,8 @@ class InstanceSettings(BaseModel):
     instance_id = models.CharField(max_length=50, unique=True)
     request_logging = models.BooleanField(default=True)
     debug_mode = models.BooleanField(default=False)
+    max_file_size_mb = models.PositiveIntegerField(default=50)
+    max_files_per_chat = models.IntegerField(default=10, help_text="0 = unlimited")
 
     class Meta:
         verbose_name = "Instance Settings"

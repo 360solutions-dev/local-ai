@@ -424,6 +424,62 @@ def delete_file(file_id: str):
     return {"message": "File removed."}
 
 
+@app.get("/api/storage-info", dependencies=[Depends(verify_api_key)])
+def storage_info():
+    """Return storage sizes for vector DB and indexed files."""
+    import shutil
+
+    from config import PERSIST_DIRECTORY
+
+    # Vector DB directory size
+    vector_db_bytes = 0
+    store_path = Path(PERSIST_DIRECTORY)
+    if store_path.exists():
+        for f in store_path.rglob("*"):
+            if f.is_file():
+                vector_db_bytes += f.stat().st_size
+
+    # Indexed files total size from DB
+    uploaded_files_bytes = 0
+    try:
+        _ensure_files_table()
+        files = list_indexed_files()
+        uploaded_files_bytes = sum(f.get("size", 0) for f in files)
+    except Exception:
+        pass
+
+    # Host disk usage (container sees the host filesystem)
+    disk = shutil.disk_usage("/")
+
+    return {
+        "vector_db_bytes": vector_db_bytes,
+        "uploaded_files_bytes": uploaded_files_bytes,
+        "disk_total_bytes": disk.total,
+        "disk_used_bytes": disk.used,
+        "disk_free_bytes": disk.free,
+    }
+
+
+@app.post("/api/clear-cache", dependencies=[Depends(verify_api_key)])
+def clear_cache():
+    """Clear vector DB cache files and in-memory caches."""
+    import shutil
+
+    from config import PERSIST_DIRECTORY
+
+    cleared_bytes = 0
+    store_path = Path(PERSIST_DIRECTORY)
+    if store_path.exists():
+        for f in store_path.rglob("*"):
+            if f.is_file():
+                cleared_bytes += f.stat().st_size
+        shutil.rmtree(store_path, ignore_errors=True)
+
+    invalidate_index_cache()
+
+    return {"message": "Cache cleared.", "cleared_bytes": cleared_bytes}
+
+
 @app.post("/api/reset", dependencies=[Depends(verify_api_key)])
 def factory_reset():
     """Delete all indexed files metadata, vector store data, Ollama models, and clear caches."""

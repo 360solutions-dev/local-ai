@@ -377,12 +377,48 @@ class FileUploadView(APIView):
 
     def post(self, request):
         """Upload a file to the RAG service for indexing."""
+        from system.models import InstanceSettings
+
         uploaded_file = request.FILES.get("file")
         if not uploaded_file:
             return Response(
                 {"error": {"code": "VALIDATION_ERROR", "message": "No file provided."}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # Enforce file size limit
+        settings_obj = InstanceSettings.get_or_create_singleton()
+        max_bytes = settings_obj.max_file_size_mb * 1024 * 1024
+        if uploaded_file.size > max_bytes:
+            return Response(
+                {
+                    "error": {
+                        "code": "FILE_TOO_LARGE",
+                        "message": f"File exceeds the {settings_obj.max_file_size_mb} MB limit.",
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Enforce max files per chat limit
+        if settings_obj.max_files_per_chat > 0:
+            try:
+                rag_url = urljoin(RAG_SERVICE_URL, "/api/files")
+                resp = requests.get(rag_url, headers=_rag_headers(), timeout=10)
+                resp.raise_for_status()
+                current_count = len(resp.json().get("files", []))
+                if current_count >= settings_obj.max_files_per_chat:
+                    return Response(
+                        {
+                            "error": {
+                                "code": "FILE_LIMIT_REACHED",
+                                "message": f"Maximum of {settings_obj.max_files_per_chat} files allowed.",
+                            }
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            except Exception:
+                pass  # Don't block upload if count check fails
 
         try:
             rag_url = urljoin(RAG_SERVICE_URL, "/api/files/upload")

@@ -14,6 +14,8 @@ interface InstanceInfo {
 interface LoggingSettings {
   request_logging: boolean;
   debug_mode: boolean;
+  max_file_size_mb: number;
+  max_files_per_chat: number;
 }
 
 export function useInstanceInfo() {

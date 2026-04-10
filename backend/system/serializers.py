@@ -6,7 +6,7 @@ from .models import InstanceSettings, ModelConfig, Provider
 class InstanceSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = InstanceSettings
-        fields = ["request_logging", "debug_mode"]
+        fields = ["request_logging", "debug_mode", "max_file_size_mb", "max_files_per_chat"]
 
 
 class ProviderSerializer(serializers.ModelSerializer):
