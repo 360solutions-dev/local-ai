@@ -383,6 +383,19 @@ export default function ModelEnginesClient() {
       return;
     }
 
+    // Check if model is already downloaded
+    // Ollama stores as "name:tag" (e.g. "llama3.1:latest")
+    // User might type "llama3.1" or "llama3.1:latest" — match both
+    const nameWithTag = name.includes(":") ? name : `${name}:latest`;
+    const nameWithoutTag = name.split(":")[0];
+    const alreadyExists = allProviderModels.some(
+      (m) => m.name === name || m.name === nameWithTag || m.name === nameWithoutTag || m.name.split(":")[0] === nameWithoutTag,
+    );
+    if (alreadyExists) {
+      setPullError(t("modelEngines.modelAlreadyExists"));
+      return;
+    }
+
     setIsValidating(true);
     setPullError(null);
     try {

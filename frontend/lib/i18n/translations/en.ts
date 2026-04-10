@@ -92,7 +92,6 @@ const en = {
   "settings.storage.uploadedFiles": "Uploaded Files",
   "settings.storage.vectorEmbeddings": "Vector Embeddings",
   "settings.storage.chatHistory": "Chat History",
-  "settings.storage.generatedAudio": "Generated Audio",
   "settings.storage.uploadLimits": "File Upload Limits",
   "settings.storage.maxFileSize": "Max File Size",
   "settings.storage.maxFilesPerChat": "Max Files per Chat",
@@ -111,20 +110,6 @@ const en = {
   "settings.security.updatePassword": "Update Password",
   "settings.security.passwordsNoMatch": "Passwords do not match.",
   "settings.security.passwordUpdated": "Password updated.",
-  "settings.security.accessControl": "Access Control",
-  "settings.security.allowRegistration": "Allow registration",
-  "settings.security.allowRegistrationDesc": "Let new users create accounts on this instance",
-  "settings.security.requireHttps": "Require HTTPS",
-  "settings.security.requireHttpsDesc": "Enforce secure connections for all traffic",
-  "settings.security.apiKeyAuth": "API key authentication",
-  "settings.security.apiKeyAuthDesc": "Require API keys for programmatic access",
-  "settings.security.session": "Session",
-  "settings.security.sessionTimeout": "Session Timeout",
-  "settings.security.1hour": "1 hour",
-  "settings.security.8hours": "8 hours",
-  "settings.security.24hours": "24 hours",
-  "settings.security.7days": "7 days",
-  "settings.security.never": "Never",
 
   // Settings - Advanced
   "settings.advanced.instanceInfo": "Instance Info",
@@ -342,6 +327,7 @@ const en = {
   "modelEngines.customEndpointDesc": "Connect any OpenAI-compatible or Ollama API with your own URL.",
   "modelEngines.providerNamePlaceholder": "e.g. My LM Studio, LocalAI",
   "modelEngines.connectionFailed": "Connection failed. Make sure the provider is running at this endpoint.",
+  "modelEngines.modelAlreadyExists": "This model is already downloaded.",
 
   // Text to Audio
   "tts.title": "Text to Audio",

@@ -87,11 +87,6 @@ export default function SettingsClient() {
     );
   }
 
-  // Security toggles
-  const [allowRegistration, setAllowRegistration] = useState(false);
-  const [requireHttps, setRequireHttps] = useState(false);
-  const [apiKeyAuth, setApiKeyAuth] = useState(true);
-
   // Advanced — real data from backend
   const { data: instanceInfo } = useInstanceInfo();
   const { data: instanceSettings } = useInstanceSettings();
@@ -265,7 +260,18 @@ export default function SettingsClient() {
             >
               {updateProfile.isPending ? t("common.saving") : t("common.save")}
             </button>
-            <button type="button" className="px-6 py-2.5 bg-transparent text-text-muted border border-border rounded-lg font-body text-[0.92rem] cursor-pointer transition-all hover:border-text-muted hover:text-text">{t("common.cancel")}</button>
+            <button
+              type="button"
+              className="px-6 py-2.5 bg-transparent text-text-muted border border-border rounded-lg font-body text-[0.92rem] cursor-pointer transition-all hover:border-text-muted hover:text-text"
+              onClick={() => {
+                if (user) {
+                  setDisplayName(user.display_name);
+                  setEmail(user.email);
+                }
+              }}
+            >
+              {t("common.cancel")}
+            </button>
           </div>
         </div>
       )}
@@ -434,32 +440,6 @@ export default function SettingsClient() {
               </div>
               {passwordError && <p className="text-danger text-[0.82rem]">{passwordError}</p>}
               <button type="button" className="px-6 py-2.5 bg-accent text-bg border-none rounded-lg font-body text-[0.92rem] font-semibold cursor-pointer transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed" onClick={handleChangePassword} disabled={changePassword.isPending}>{changePassword.isPending ? t("common.saving") : t("settings.security.updatePassword")}</button>
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-semibold mb-4">{t("settings.security.accessControl")}</h2>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between py-2">
-                <div><div className="text-[0.92rem] font-medium">{t("settings.security.allowRegistration")}</div><div className="text-[0.82rem] text-text-muted font-light">{t("settings.security.allowRegistrationDesc")}</div></div>
-                <Toggle on={allowRegistration} onToggle={() => setAllowRegistration((v) => !v)} />
-              </div>
-              <div className="flex items-center justify-between py-2">
-                <div><div className="text-[0.92rem] font-medium">{t("settings.security.requireHttps")}</div><div className="text-[0.82rem] text-text-muted font-light">{t("settings.security.requireHttpsDesc")}</div></div>
-                <Toggle on={requireHttps} onToggle={() => setRequireHttps((v) => !v)} />
-              </div>
-              <div className="flex items-center justify-between py-2">
-                <div><div className="text-[0.92rem] font-medium">{t("settings.security.apiKeyAuth")}</div><div className="text-[0.82rem] text-text-muted font-light">{t("settings.security.apiKeyAuthDesc")}</div></div>
-                <Toggle on={apiKeyAuth} onToggle={() => setApiKeyAuth((v) => !v)} />
-              </div>
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-semibold mb-4">{t("settings.security.session")}</h2>
-            <div>
-              <label className="block font-mono text-[0.72rem] text-text-muted tracking-wide uppercase mb-1.5">{t("settings.security.sessionTimeout")}</label>
-              <select className={`${selectClass} max-w-xs`} defaultValue="24h"><option value="1h">{t("settings.security.1hour")}</option><option value="8h">{t("settings.security.8hours")}</option><option value="24h">{t("settings.security.24hours")}</option><option value="7d">{t("settings.security.7days")}</option><option value="never">{t("settings.security.never")}</option></select>
             </div>
           </section>
         </div>
