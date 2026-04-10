@@ -17,5 +17,6 @@ urlpatterns = [
     path("providers/", views.ProviderListCreateView.as_view(), name="provider-list-create"),
     path("providers/<uuid:provider_id>/", views.ProviderDetailView.as_view(), name="provider-detail"),
     path("providers/<uuid:provider_id>/set-default/", views.ProviderSetDefaultView.as_view(), name="provider-set-default"),
+    path("providers/<uuid:provider_id>/models/", views.ProviderModelsView.as_view(), name="provider-models"),
     path("model-config/", views.ModelConfigView.as_view(), name="model-config"),
 ]

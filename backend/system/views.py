@@ -622,6 +622,75 @@ class ProviderSetDefaultView(APIView):
         return Response({"provider": ProviderSerializer(provider).data})
 
 
+class ProviderModelsView(APIView):
+    """List models available on a specific provider."""
+
+    permission_classes = [IsAuthenticated]
+
+    _DOCKER_HOST_MAP = {
+        ("localhost", 11434): "ollama",
+        ("127.0.0.1", 11434): "ollama",
+    }
+
+    def _resolve_endpoint(self, endpoint: str) -> str:
+        parsed = urlparse(endpoint)
+        hostname = parsed.hostname or ""
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        docker_host = self._DOCKER_HOST_MAP.get((hostname, port))
+        if docker_host:
+            return f"{parsed.scheme}://{docker_host}:{port}"
+        return endpoint
+
+    def get(self, request, provider_id):
+        try:
+            provider = Provider.objects.get(pk=provider_id)
+        except Provider.DoesNotExist:
+            return Response(
+                {"error": {"code": "NOT_FOUND", "message": "Provider not found."}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        endpoint = self._resolve_endpoint(provider.endpoint.rstrip("/"))
+
+        if provider.type == "openai":
+            url = f"{endpoint}/v1/models"
+        else:
+            url = f"{endpoint}/api/tags"
+
+        try:
+            resp = http_requests.get(url, timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            return Response(
+                {"models": [], "error": str(e)},
+                status=status.HTTP_200_OK,
+            )
+
+        # Normalise into a flat list of {id, name, size?, ...}
+        models = []
+        if provider.type == "ollama":
+            for m in data.get("models", []):
+                models.append({
+                    "id": m.get("name", ""),
+                    "name": m.get("name", ""),
+                    "size": m.get("size", 0),
+                    "provider_id": str(provider.id),
+                    "provider_name": provider.name,
+                })
+        else:
+            for m in data.get("data", []):
+                models.append({
+                    "id": m.get("id", ""),
+                    "name": m.get("id", ""),
+                    "size": 0,
+                    "provider_id": str(provider.id),
+                    "provider_name": provider.name,
+                })
+
+        return Response({"models": models})
+
+
 class ModelConfigView(APIView):
     """Get or update the feature → model mapping."""
 

@@ -495,6 +495,58 @@ export function useSetDefaultProvider() {
 }
 
 // ---------------------------------------------------------------------------
+// Provider models hook
+// ---------------------------------------------------------------------------
+
+export interface ProviderModelData {
+  id: string;
+  name: string;
+  size: number;
+  provider_id: string;
+  provider_name: string;
+}
+
+export function useProviderModels(providerId: string | undefined) {
+  return useQuery({
+    queryKey: ["system", "provider-models", providerId],
+    queryFn: async () => {
+      if (!providerId) return [];
+      const res = await apiGet<{ models: ProviderModelData[] }>(`/api/system/providers/${providerId}/models/`);
+      if (!res.ok) return [];
+      return res.data.models;
+    },
+    enabled: !!providerId,
+  });
+}
+
+export function useAllProviderModels(providers: ProviderData[]) {
+  const connectedIds = providers
+    .filter((p) => p.is_connected)
+    .map((p) => p.id)
+    .sort()
+    .join(",");
+
+  return useQuery({
+    queryKey: ["system", "all-provider-models", connectedIds],
+    queryFn: async () => {
+      const connected = providers.filter((p) => p.is_connected);
+      if (connected.length === 0) return [];
+
+      const results = await Promise.all(
+        connected.map(async (p) => {
+          const res = await apiGet<{ models: ProviderModelData[] }>(
+            `/api/system/providers/${p.id}/models/`,
+          );
+          return res.ok ? res.data.models : [];
+        }),
+      );
+      return results.flat();
+    },
+    enabled: connectedIds.length > 0,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Model config hooks
 // ---------------------------------------------------------------------------
 
