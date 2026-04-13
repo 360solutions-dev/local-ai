@@ -78,6 +78,8 @@ const zh: Translations = {
   "settings.storage.subtitle": "local-ai服务使用的磁盘空间概览。",
   "settings.storage.totalAllocated": "总分配",
   "settings.storage.used": "已使用",
+  "settings.storage.projectTotalRow": "项目总计",
+  "settings.storage.otherTotalRow": "其他",
   "settings.storage.available": "可用",
   "settings.storage.used_pct": "已使用 {pct}%",
   "settings.storage.free": "剩余 {size}",

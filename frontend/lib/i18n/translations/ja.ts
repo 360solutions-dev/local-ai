@@ -78,6 +78,8 @@ const ja: Translations = {
   "settings.storage.subtitle": "local-aiサービスが使用するディスク容量の概要。",
   "settings.storage.totalAllocated": "総割り当て",
   "settings.storage.used": "使用中",
+  "settings.storage.projectTotalRow": "プロジェクト合計",
+  "settings.storage.otherTotalRow": "その他",
   "settings.storage.available": "利用可能",
   "settings.storage.used_pct": "{pct}% 使用中",
   "settings.storage.free": "{size} 空き",

@@ -78,6 +78,8 @@ const de: Translations = {
   "settings.storage.subtitle": "Überblick über den von local-ai genutzten Speicherplatz.",
   "settings.storage.totalAllocated": "Gesamt zugewiesen",
   "settings.storage.used": "Belegt",
+  "settings.storage.projectTotalRow": "Projekt gesamt",
+  "settings.storage.otherTotalRow": "Sonstiges",
   "settings.storage.available": "Verfügbar",
   "settings.storage.used_pct": "{pct}% belegt",
   "settings.storage.free": "{size} frei",

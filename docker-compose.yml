@@ -63,6 +63,9 @@ services:
     build: ./backend
     container_name: local-ai-django
     restart: unless-stopped
+    # Run as root so the storage page can read /var/run/docker.sock for
+    # per-project Docker stats. Acceptable for a local single-user app.
+    user: "0"
     env_file: .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -74,6 +77,9 @@ services:
       RAG_API_KEY: ${RAG_API_KEY}
     volumes:
       - ./backend:/app
+      # Read-only Docker socket so the storage page can report the project's
+      # real Docker footprint via the Docker Engine API.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       postgres:
         condition: service_healthy

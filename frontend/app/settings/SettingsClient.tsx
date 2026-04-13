@@ -5,7 +5,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { useAccentColor, type AccentColor } from "@/hooks/use-accent-color";
 import { useCurrentUser, useUpdateProfile, useChangePassword, useUpdateNotificationPreferences } from "@/hooks/use-auth";
 import { useInstanceInfo, useInstanceSettings, useUpdateInstanceSettings, useExportChatHistory, useExportSettings, useExportAllData, useResetInstance, useDeleteAllData, useFactoryReset } from "@/hooks/use-advanced-settings";
-import { useStorageInfo, useClearCache, formatBytes } from "@/hooks/use-storage";
+import { useStorageInfo, useDockerUsage, useClearCache, formatBytes } from "@/hooks/use-storage";
 import { SettingsSkeleton } from "@/components/ui/Skeleton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
@@ -105,6 +105,7 @@ export default function SettingsClient() {
 
   // Storage — real data from backend
   const { data: storageInfo, isLoading: storageLoading } = useStorageInfo();
+  const { data: dockerUsage } = useDockerUsage();
   const clearCache = useClearCache();
   const [maxFileSize, setMaxFileSize] = useState(50);
   const [maxFilesPerChat, setMaxFilesPerChat] = useState(10);
@@ -303,13 +304,31 @@ export default function SettingsClient() {
                     <span className="text-text-muted text-[0.88rem]">{t("settings.storage.used")}</span>
                     <span className="font-mono text-[0.88rem] text-accent">{formatBytes(storageInfo.disk.used)}</span>
                   </div>
+                  {dockerUsage?.available && dockerUsage.project && (
+                    <div className="flex justify-between py-2 border-b border-border">
+                      <span className="text-text-muted text-[0.88rem]">{t("settings.storage.projectTotalRow")}</span>
+                      <span className="font-mono text-[0.88rem] text-accent">{formatBytes(dockerUsage.project.totals.total)}</span>
+                    </div>
+                  )}
+                  {dockerUsage?.available && dockerUsage.other && dockerUsage.other.totals.total > 0 && (
+                    <div className="flex justify-between py-2 border-b border-border">
+                      <span className="text-text-muted text-[0.88rem]">{t("settings.storage.otherTotalRow")}</span>
+                      <span className="font-mono text-[0.88rem]">{formatBytes(dockerUsage.other.totals.total)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between py-2">
                     <span className="text-text-muted text-[0.88rem]">{t("settings.storage.available")}</span>
                     <span className="font-mono text-[0.88rem]">{formatBytes(storageInfo.disk.free)}</span>
                   </div>
                 </div>
                 {(() => {
-                  const pct = storageInfo.disk.total > 0 ? ((storageInfo.disk.used / storageInfo.disk.total) * 100).toFixed(1) : "0";
+                  // Bar denominator = Docker VM total. Numerator prefers the real
+                  // full Docker footprint (project + other) when available, else
+                  // falls back to just app data.
+                  const projectTotal = dockerUsage?.project?.totals.total ?? 0;
+                  const otherTotal = dockerUsage?.other?.totals.total ?? 0;
+                  const usedForBar = projectTotal + otherTotal > 0 ? projectTotal + otherTotal : storageInfo.disk.used;
+                  const pct = storageInfo.disk.total > 0 ? ((usedForBar / storageInfo.disk.total) * 100).toFixed(1) : "0";
                   return (
                     <div className="mb-2">
                       <div className="h-2 bg-bg-card rounded-full overflow-hidden">

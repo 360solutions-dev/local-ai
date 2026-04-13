@@ -118,33 +118,52 @@ class StorageInfoView(APIView):
         except Exception as e:
             logger.warning("Failed to fetch RAG storage info: %s", e)
 
-        # 4. PostgreSQL — only chat-related tables
+        # 4. PostgreSQL — only chat-related tables.
+        # Resilient to any of the three tables not existing yet (e.g. before the
+        # RAG migration for query_history has run): we count rows and sum sizes
+        # only across tables that currently exist in the public schema.
         try:
             from django.db import connection as db_conn
 
+            chat_tables = ("messages", "conversations", "query_history")
+
             with db_conn.cursor() as cursor:
-                # Only report size if there are actual rows, otherwise
-                # empty tables still consume ~72 KB of PostgreSQL overhead.
-                cursor.execute("""
-                    SELECT COALESCE(SUM(cnt), 0) FROM (
-                        SELECT count(*) AS cnt FROM messages
-                        UNION ALL
-                        SELECT count(*) FROM conversations
-                        UNION ALL
-                        SELECT count(*) FROM query_history
-                    ) t
-                """)
-                row_count = cursor.fetchone()[0]
-                if row_count > 0:
-                    cursor.execute("""
-                        SELECT COALESCE(SUM(pg_total_relation_size(c.oid)), 0)
-                        FROM pg_class c
-                        JOIN pg_namespace n ON n.oid = c.relnamespace
-                        WHERE n.nspname = 'public'
-                          AND c.relkind = 'r'
-                          AND c.relname IN ('messages', 'conversations', 'query_history')
-                    """)
-                    breakdown["chat_history"] = cursor.fetchone()[0]
+                cursor.execute(
+                    """
+                    SELECT c.relname
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = 'public'
+                      AND c.relkind = 'r'
+                      AND c.relname = ANY(%s)
+                    """,
+                    [list(chat_tables)],
+                )
+                existing = [row[0] for row in cursor.fetchall()]
+
+                if existing:
+                    # Count rows across existing tables only
+                    count_sql = " UNION ALL ".join(
+                        f"SELECT count(*) AS cnt FROM {name}" for name in existing
+                    )
+                    cursor.execute(f"SELECT COALESCE(SUM(cnt), 0) FROM ({count_sql}) t")
+                    row_count = cursor.fetchone()[0]
+
+                    # Only report size if there are actual rows, otherwise
+                    # empty tables still consume ~72 KB of PostgreSQL overhead.
+                    if row_count > 0:
+                        cursor.execute(
+                            """
+                            SELECT COALESCE(SUM(pg_total_relation_size(c.oid)), 0)
+                            FROM pg_class c
+                            JOIN pg_namespace n ON n.oid = c.relnamespace
+                            WHERE n.nspname = 'public'
+                              AND c.relkind = 'r'
+                              AND c.relname = ANY(%s)
+                            """,
+                            [existing],
+                        )
+                        breakdown["chat_history"] = cursor.fetchone()[0]
         except Exception as e:
             logger.warning("Failed to fetch chat history size: %s", e)
 
@@ -154,11 +173,216 @@ class StorageInfoView(APIView):
             {
                 "disk": {
                     "total": disk_total,
-                    "used": disk_used,
+                    # Report local-ai's app-data footprint here, not the shared
+                    # Docker VM "used" — that includes overlay layers/build
+                    # cache and is reported separately by /storage/docker/.
+                    "used": total_used,
                     "free": disk_free,
                 },
                 "breakdown": breakdown,
                 "total_tracked": total_used,
+            }
+        )
+
+
+# ---------------------------------------------------------------------------
+# Docker infrastructure usage (images + volumes + container layers)
+# ---------------------------------------------------------------------------
+
+DOCKER_SOCK_PATH = "/var/run/docker.sock"
+COMPOSE_PROJECT = "local-ai"
+
+
+def _docker_get(path: str):
+    """GET request to the Docker Engine API over the unix socket. Stdlib only."""
+    import http.client
+    import socket as _socket
+
+    class UnixHTTPConnection(http.client.HTTPConnection):
+        def __init__(self, sock_path):
+            super().__init__("localhost")
+            self._sock_path = sock_path
+
+        def connect(self):
+            sock = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
+            sock.connect(self._sock_path)
+            self.sock = sock
+
+    conn = UnixHTTPConnection(DOCKER_SOCK_PATH)
+    try:
+        conn.request("GET", path)
+        resp = conn.getresponse()
+        body = resp.read()
+        if resp.status >= 400:
+            raise RuntimeError(f"Docker API {path} returned {resp.status}: {body[:200]!r}")
+        return json.loads(body)
+    finally:
+        conn.close()
+
+
+class DockerUsageView(APIView):
+    """Report Docker disk usage split into:
+      - this compose project (local-ai), broken down per service
+      - "other": everything else on the Docker host
+    Each image, container, and volume is attributed to exactly one bucket.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not os.path.exists(DOCKER_SOCK_PATH):
+            return Response(
+                {
+                    "available": False,
+                    "error": (
+                        "Docker socket not available. Mount "
+                        "/var/run/docker.sock into the Django container to enable."
+                    ),
+                }
+            )
+
+        try:
+            df = _docker_get("/v1.41/system/df")
+        except Exception as e:
+            logger.warning("Docker API call failed: %s", e)
+            return Response({"available": False, "error": str(e)})
+
+        all_containers = df.get("Containers") or []
+        all_images = df.get("Images") or []
+        all_volumes = df.get("Volumes") or []
+
+        def _img_size(img):
+            return int(img.get("Size") or 0)
+
+        image_by_id = {img.get("Id"): img for img in all_images}
+        volume_by_name = {v.get("Name"): v for v in all_volumes}
+
+        # ---- This project ---------------------------------------------------
+        project_containers = [
+            c for c in all_containers
+            if (c.get("Labels") or {}).get("com.docker.compose.project") == COMPOSE_PROJECT
+        ]
+
+        services_map: dict = {}
+        for c in project_containers:
+            labels = c.get("Labels") or {}
+            svc_name = labels.get("com.docker.compose.service") or "unknown"
+            entry = services_map.setdefault(svc_name, {
+                "name": svc_name,
+                "image_id": None,
+                "image_name": None,
+                "image_size": 0,
+                "container_layer": 0,
+                "volumes": [],
+                "_volume_names": set(),
+                "total": 0,
+            })
+            entry["image_id"] = c.get("ImageID") or entry["image_id"]
+            entry["image_name"] = c.get("Image") or entry["image_name"]
+            entry["container_layer"] += int(c.get("SizeRw") or 0)
+            for m in c.get("Mounts") or []:
+                if m.get("Type") == "volume" and m.get("Name"):
+                    entry["_volume_names"].add(m["Name"])
+
+        for entry in services_map.values():
+            img = image_by_id.get(entry["image_id"])
+            if img:
+                entry["image_size"] = _img_size(img)
+            for vname in sorted(entry.pop("_volume_names")):
+                v = volume_by_name.get(vname)
+                size = int((v.get("UsageData") or {}).get("Size") or 0) if v else 0
+                entry["volumes"].append({"name": vname, "size": size})
+            entry["total"] = (
+                entry["image_size"]
+                + entry["container_layer"]
+                + sum(v["size"] for v in entry["volumes"])
+            )
+
+        services = sorted(services_map.values(), key=lambda s: s["total"], reverse=True)
+
+        project_image_ids: set = set()
+        project_image_size = 0
+        for s in services:
+            iid = s["image_id"]
+            if iid and iid not in project_image_ids:
+                project_image_ids.add(iid)
+                project_image_size += s["image_size"]
+        project_container_size = sum(s["container_layer"] for s in services)
+
+        # Volumes attributable to this project: BOTH compose-labeled named
+        # volumes AND any anonymous volume currently mounted by a project
+        # container (anonymous volumes don't carry the compose project label
+        # but morally belong to the service that mounts them).
+        labeled_project_volume_names = {
+            v.get("Name") for v in all_volumes
+            if (v.get("Labels") or {}).get("com.docker.compose.project") == COMPOSE_PROJECT
+        }
+        mounted_volume_names = {
+            m.get("Name")
+            for c in project_containers
+            for m in (c.get("Mounts") or [])
+            if m.get("Type") == "volume" and m.get("Name")
+        }
+        project_volume_names = labeled_project_volume_names | mounted_volume_names
+        project_volume_size = sum(
+            int((v.get("UsageData") or {}).get("Size") or 0)
+            for v in all_volumes
+            if v.get("Name") in project_volume_names
+        )
+
+        project_total = project_image_size + project_container_size + project_volume_size
+
+        # ---- Other (everything outside this project) -----------------------
+        other_containers = [
+            c for c in all_containers
+            if (c.get("Labels") or {}).get("com.docker.compose.project") != COMPOSE_PROJECT
+        ]
+        other_images = [img for img in all_images if img.get("Id") not in project_image_ids]
+        other_volumes = [v for v in all_volumes if v.get("Name") not in project_volume_names]
+
+        other_image_size = sum(_img_size(img) for img in other_images)
+        other_container_size = sum(int(c.get("SizeRw") or 0) for c in other_containers)
+        other_volume_size = sum(
+            int((v.get("UsageData") or {}).get("Size") or 0) for v in other_volumes
+        )
+        other_total = other_image_size + other_container_size + other_volume_size
+
+        try:
+            import shutil
+            disk = shutil.disk_usage("/")
+            disk_total = disk.total
+            disk_free = disk.free
+        except Exception:
+            disk_total = disk_free = 0
+
+        return Response(
+            {
+                "available": True,
+                "project": {
+                    "name": COMPOSE_PROJECT,
+                    "services": services,
+                    "totals": {
+                        "images": project_image_size,
+                        "containers": project_container_size,
+                        "volumes": project_volume_size,
+                        "total": project_total,
+                    },
+                },
+                "other": {
+                    "images_count": len(other_images),
+                    "containers_count": len(other_containers),
+                    "volumes_count": len(other_volumes),
+                    "totals": {
+                        "images": other_image_size,
+                        "containers": other_container_size,
+                        "volumes": other_volume_size,
+                        "total": other_total,
+                    },
+                },
+                "disk": {
+                    "total": disk_total,
+                    "free": disk_free,
+                },
             }
         )
 

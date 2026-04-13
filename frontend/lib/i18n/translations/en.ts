@@ -83,6 +83,8 @@ const en = {
   "settings.storage.subtitle": "Overview of disk space used by local-ai services.",
   "settings.storage.totalAllocated": "Host Disk Total",
   "settings.storage.used": "Used",
+  "settings.storage.projectTotalRow": "Project total",
+  "settings.storage.otherTotalRow": "Other",
   "settings.storage.available": "Available",
   "settings.storage.used_pct": "{pct}% used",
   "settings.storage.free": "{size} free",

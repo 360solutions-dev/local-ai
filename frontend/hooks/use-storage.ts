@@ -35,6 +35,59 @@ export function useStorageInfo() {
   });
 }
 
+export interface DockerVolumeItem {
+  name: string;
+  size: number;
+}
+
+export interface DockerService {
+  name: string;
+  image_name: string | null;
+  image_size: number;
+  container_layer: number;
+  volumes: DockerVolumeItem[];
+  total: number;
+}
+
+export interface DockerBucketTotals {
+  images: number;
+  containers: number;
+  volumes: number;
+  total: number;
+}
+
+export interface DockerUsageInfo {
+  available: boolean;
+  error?: string;
+  project?: {
+    name: string;
+    services: DockerService[];
+    totals: DockerBucketTotals;
+  };
+  other?: {
+    images_count: number;
+    containers_count: number;
+    volumes_count: number;
+    totals: DockerBucketTotals;
+  };
+  disk?: {
+    total: number;
+    free: number;
+  };
+}
+
+export function useDockerUsage() {
+  return useQuery({
+    queryKey: ["system", "storage", "docker"],
+    queryFn: async () => {
+      const res = await apiGet<DockerUsageInfo>("/api/system/storage/docker/");
+      if (!res.ok) return null;
+      return res.data;
+    },
+    refetchInterval: 30_000,
+  });
+}
+
 export function useClearCache() {
   const queryClient = useQueryClient();
 
