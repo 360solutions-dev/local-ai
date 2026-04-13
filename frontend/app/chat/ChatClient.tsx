@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowRight, Ellipsis, Pencil, Trash2 } from "lucide-react";
+import { ArrowRight, Check, Copy, Ellipsis, Pencil, Trash2 } from "lucide-react";
 import Sidebar from "@/components/layout/Sidebar";
 import { useTranslation } from "@/lib/i18n";
 import {
@@ -16,7 +16,6 @@ import {
   useConversationMessages,
   useCreateConversation,
   useSendMessage,
-  useDeleteTurn,
   useDeleteConversation,
   useRenameConversation,
   useIndexedFiles,
@@ -106,7 +105,7 @@ export default function ChatClient() {
   const { data: messages = [], isLoading: msgsLoading } = useConversationMessages(activeChatId);
   const createConversation = useCreateConversation();
   const sendMessage = useSendMessage();
-  const deleteTurn = useDeleteTurn();
+  const [copiedMessageId, setCopiedMessageId] = useState<string | number | null>(null);
   const deleteConversation = useDeleteConversation();
   const renameConversation = useRenameConversation();
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
@@ -223,18 +222,12 @@ export default function ChatClient() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // Generate a turn_id so the backend tags both user + assistant messages
-    // with it. If the user hits Stop, we DELETE /api/chat/turns/<turn_id>/
-    // to remove whatever the backend may have persisted before aborting.
     const turnId =
       typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
         : `turn-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     activeTurnRef.current = { turnId, conversationId: chatId };
 
-    // The hook's onMutate writes optimistic user + thinking bubbles directly
-    // into the messages cache, and onSuccess replaces them with the real
-    // server rows. No separate pendingMessages state = no duplicate race.
     sendMessage.mutate(
       {
         conversationId: chatId,
@@ -254,14 +247,20 @@ export default function ChatClient() {
     );
   }
 
-  function stripOptimisticFromCache(conversationId: number) {
+  function stripOptimisticAssistantFromCache(conversationId: number) {
+    // Remove only the in-flight assistant placeholder ("Thinking...") so the
+    // user message stays visible. Per UX requirement: hitting Stop must NOT
+    // delete the user's message — they can still copy or edit it.
     queryClient.setQueryData<ChatMessage[]>(
       ["chat", "messages", conversationId],
       (old = []) =>
         old.filter(
           (m) =>
-            !(typeof m.id === "string" &&
-              (m.id as unknown as string).startsWith(OPTIMISTIC_PREFIX)),
+            !(
+              m.role === "assistant" &&
+              typeof m.id === "string" &&
+              (m.id as unknown as string).startsWith(OPTIMISTIC_PREFIX)
+            ),
         ),
     );
   }
@@ -271,15 +270,27 @@ export default function ChatClient() {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
-    // Remove any messages the backend may have persisted for this turn before
-    // the client disconnected — "no response returned for that message".
+    // Intentionally do NOT delete the turn — preserve the user's message so
+    // they can edit/copy it. We just drop the optimistic "Thinking..." bubble.
     const active = activeTurnRef.current;
     if (active) {
-      deleteTurn.mutate({ turnId: active.turnId, conversationId: active.conversationId });
-      // Also drop any optimistic bubbles left in the cache from this turn.
-      stripOptimisticFromCache(active.conversationId);
+      stripOptimisticAssistantFromCache(active.conversationId);
       activeTurnRef.current = null;
     }
+  }
+
+  async function handleCopyMessage(id: string | number, content: string) {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageId(id);
+      setTimeout(() => setCopiedMessageId((current) => (current === id ? null : current)), 1500);
+    } catch {
+      // Clipboard API can fail in non-secure contexts; silently ignore.
+    }
+  }
+
+  function handleEditMessage(content: string) {
+    setInput(content);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -320,9 +331,9 @@ export default function ChatClient() {
       abortControllerRef.current = null;
     }
     if (activeTurnRef.current) {
-      // Strip any optimistic bubbles left in the previous conversation's cache
-      // so returning to it doesn't show a stranded "Thinking..." bubble.
-      stripOptimisticFromCache(activeTurnRef.current.conversationId);
+      // Drop only the optimistic "Thinking..." assistant bubble; keep the
+      // user message so they can return and copy/edit it.
+      stripOptimisticAssistantFromCache(activeTurnRef.current.conversationId);
       activeTurnRef.current = null;
     }
     setActiveChatId(null);
@@ -375,10 +386,11 @@ export default function ChatClient() {
     const isUser = m.role === "user";
     const sourceList = parseSources(m.sources ?? null);
     const isThinking = isPending && m.role === "assistant";
+    const wasCopied = copiedMessageId === m.id;
 
     if (isUser) {
       return (
-        <div key={m.id} className="max-w-[720px] w-full mx-auto flex gap-3 flex-row-reverse animate-[msgIn_0.3s_ease]">
+        <div key={m.id} className="group max-w-[720px] w-full mx-auto flex gap-3 flex-row-reverse animate-[msgIn_0.3s_ease]">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[0.8rem] shrink-0 mt-0.5 bg-linear-to-br from-indigo-500 to-indigo-400 text-white font-bold">A</div>
           <div className="flex-1 text-right">
             <div className="text-[0.78rem] font-semibold mb-1 flex items-center gap-2 justify-end">
@@ -387,13 +399,33 @@ export default function ChatClient() {
             <div className={`inline-block text-left px-4 py-3 rounded-xl bg-indigo-500/[0.12] border border-indigo-500/20 rounded-tr-sm ${isPending ? "opacity-70" : ""}`}>
               <div className="text-[0.92rem] leading-[1.7] text-text-muted font-light">{m.content}</div>
             </div>
+            <div className="flex gap-1 justify-end mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                type="button"
+                className="flex items-center gap-1 px-2 py-1 rounded text-[0.72rem] text-text-dim bg-transparent border border-transparent hover:text-accent hover:border-border cursor-pointer transition-colors"
+                title={t("chat.copy")}
+                onClick={() => handleCopyMessage(m.id, m.content)}
+              >
+                {wasCopied ? <Check size={12} /> : <Copy size={12} />}
+                {wasCopied ? t("chat.copied") : t("chat.copy")}
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-1 px-2 py-1 rounded text-[0.72rem] text-text-dim bg-transparent border border-transparent hover:text-accent hover:border-border cursor-pointer transition-colors"
+                title={t("chat.edit")}
+                onClick={() => handleEditMessage(m.content)}
+              >
+                <Pencil size={12} />
+                {t("chat.edit")}
+              </button>
+            </div>
           </div>
         </div>
       );
     }
 
     return (
-      <div key={m.id} className="max-w-[720px] w-full mx-auto flex gap-3 animate-[msgIn_0.3s_ease]">
+      <div key={m.id} className="group max-w-[720px] w-full mx-auto flex gap-3 animate-[msgIn_0.3s_ease]">
         <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[0.8rem] shrink-0 mt-0.5 bg-accent/15 border border-border-accent text-accent">🤖</div>
         <div className="flex-1">
           <div className="text-[0.78rem] font-semibold mb-1 flex items-center gap-2">
@@ -418,6 +450,19 @@ export default function ChatClient() {
               </div>
             )}
           </div>
+          {!isThinking && m.content.length > 0 && (
+            <div className="flex gap-1 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                type="button"
+                className="flex items-center gap-1 px-2 py-1 rounded text-[0.72rem] text-text-dim bg-transparent border border-transparent hover:text-accent hover:border-border cursor-pointer transition-colors"
+                title={t("chat.copy")}
+                onClick={() => handleCopyMessage(m.id, m.content)}
+              >
+                {wasCopied ? <Check size={12} /> : <Copy size={12} />}
+                {wasCopied ? t("chat.copied") : t("chat.copy")}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );

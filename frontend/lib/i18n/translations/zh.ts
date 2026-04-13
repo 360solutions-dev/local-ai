@@ -378,6 +378,12 @@ const zh: Translations = {
   "chat.indexedFiles": "已索引文件（{count}）",
   "chat.indexed": "已索引",
   "chat.you": "你",
+  "chat.copy": "复制",
+  "chat.copied": "已复制",
+  "chat.edit": "编辑",
+  "chat.save": "保存",
+  "chat.cancel": "取消",
+  "chat.stopped": "已被用户停止",
 };
 
 export default zh;

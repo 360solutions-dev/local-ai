@@ -1,6 +1,7 @@
 services:
   caddy:
     image: caddy:2-alpine
+    container_name: local-ai-caddy
     restart: unless-stopped
     ports:
       - "80:80"
@@ -21,6 +22,7 @@ services:
 
   postgres:
     image: postgres:16-alpine
+    container_name: local-ai-postgres
     restart: unless-stopped
     env_file: .env
     environment:
@@ -41,6 +43,7 @@ services:
 
   ollama:
     image: ollama/ollama:latest
+    container_name: local-ai-ollama
     restart: unless-stopped
     ports:
       - "11434:11434"
@@ -58,6 +61,7 @@ services:
 
   django:
     build: ./backend
+    container_name: local-ai-django
     restart: unless-stopped
     env_file: .env
     environment:
@@ -86,7 +90,12 @@ services:
 
   nextjs:
     build: ./frontend
+    container_name: local-ai-nextjs
     restart: unless-stopped
+    # Override Dockerfile USER so the container can write to the anonymous
+    # /app/.next and /app/node_modules volumes (Docker creates them root-owned,
+    # which causes Turbopack EACCES on .next/dev mkdir for the image's appuser).
+    user: "0"
     environment:
       BACKEND_URL: http://django:8000
       RAG_URL: http://rag:8080
@@ -108,6 +117,7 @@ services:
 
   rag:
     build: ./rag
+    container_name: local-ai-rag
     restart: unless-stopped
     env_file: .env
     environment:

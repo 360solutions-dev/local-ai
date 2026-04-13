@@ -378,6 +378,12 @@ const ja: Translations = {
   "chat.indexedFiles": "インデックス済みファイル（{count}）",
   "chat.indexed": "インデックス済み",
   "chat.you": "あなた",
+  "chat.copy": "コピー",
+  "chat.copied": "コピーしました",
+  "chat.edit": "編集",
+  "chat.save": "保存",
+  "chat.cancel": "キャンセル",
+  "chat.stopped": "ユーザーにより停止されました",
 };
 
 export default ja;

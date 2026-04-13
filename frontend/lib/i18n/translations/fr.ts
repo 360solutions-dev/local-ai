@@ -378,6 +378,12 @@ const fr: Translations = {
   "chat.indexedFiles": "Fichiers indexés ({count})",
   "chat.indexed": "Indexé",
   "chat.you": "Vous",
+  "chat.copy": "Copier",
+  "chat.copied": "Copié",
+  "chat.edit": "Modifier",
+  "chat.save": "Enregistrer",
+  "chat.cancel": "Annuler",
+  "chat.stopped": "Arrêté par l'utilisateur",
 };
 
 export default fr;

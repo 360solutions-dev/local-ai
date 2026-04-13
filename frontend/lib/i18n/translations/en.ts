@@ -391,6 +391,12 @@ const en = {
   "chat.indexedFiles": "Indexed Files ({count})",
   "chat.indexed": "Indexed",
   "chat.you": "You",
+  "chat.copy": "Copy",
+  "chat.copied": "Copied",
+  "chat.edit": "Edit",
+  "chat.save": "Save",
+  "chat.cancel": "Cancel",
+  "chat.stopped": "Stopped by user",
 } as const;
 
 export type TranslationKeys = keyof typeof en;
