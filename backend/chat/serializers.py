@@ -10,6 +10,7 @@ class RenameConversationSerializer(serializers.Serializer):
 
 
 class SendMessageSerializer(serializers.Serializer):
-    content = serializers.CharField()
+    content = serializers.CharField(max_length=50000)
     model = serializers.CharField(required=False, allow_blank=True)
     file_filter = serializers.CharField(required=False, allow_blank=True)
+    turn_id = serializers.CharField(required=False, allow_blank=True, max_length=64)

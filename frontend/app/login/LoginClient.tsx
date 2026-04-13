@@ -4,6 +4,10 @@ import { FormEvent, useCallback, useState } from "react";
 import { Check, Eye, EyeOff } from "lucide-react";
 import { useLogin, useResetPassword } from "@/hooks/use-auth";
 import { useTranslation } from "@/lib/i18n";
+import Input from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
+import ErrorAlert from "@/components/ui/ErrorAlert";
+import Logo from "@/components/ui/Logo";
 
 export default function LoginClient() {
   const { t } = useTranslation();
@@ -14,6 +18,7 @@ export default function LoginClient() {
   const [pwVisible, setPwVisible] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotStep, setForgotStep] = useState(1);
+  const [resetError, setResetError] = useState("");
 
   const login = useLogin();
   const resetPw = useResetPassword();
@@ -53,16 +58,18 @@ export default function LoginClient() {
     const confirmPw =
       (document.getElementById("confirmNewPw") as HTMLInputElement | null)?.value ?? "";
 
+    setResetError("");
+
     if (!token) {
-      window.alert(t("login.enterResetTokenAlert"));
+      setResetError(t("login.enterResetTokenAlert"));
       return;
     }
     if (newPw.length < 8) {
-      window.alert(t("login.passwordMinChars"));
+      setResetError(t("login.passwordMinChars"));
       return;
     }
     if (newPw !== confirmPw) {
-      window.alert(t("login.passwordsNoMatch"));
+      setResetError(t("login.passwordsNoMatch"));
       return;
     }
 
@@ -70,7 +77,7 @@ export default function LoginClient() {
       { token, new_password: newPw },
       {
         onSuccess: () => setForgotStep(3),
-        onError: (err) => window.alert(err.message),
+        onError: (err) => setResetError(err.message),
       },
     );
   }
@@ -86,7 +93,6 @@ export default function LoginClient() {
 
   const inputBase =
     "w-full px-4 py-3 bg-bg-card border border-border rounded-lg text-text font-body text-[0.95rem] outline-none transition-all duration-200 placeholder:text-text-dim focus:border-border-focus focus:shadow-[0_0_0_3px_rgba(52,211,153,0.15)]";
-  const inputError = "border-danger shadow-[0_0_0_3px_rgba(239,68,68,0.1)]";
 
   return (
     <div className="font-body bg-bg text-text min-h-screen flex items-center justify-center overflow-hidden relative">
@@ -98,19 +104,8 @@ export default function LoginClient() {
 
       <div className="relative z-1 w-full max-w-[420px] px-8">
         {/* Logo */}
-        <div className="flex items-center justify-center gap-2.5 font-mono text-xl text-accent mb-10 tracking-wide">
-          <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-8 h-8">
-            <path d="M14 2.5L4 7v7c0 6.1 4.3 11.5 10 13 5.7-1.5 10-6.9 10-13V7L14 2.5z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-            <circle cx="14" cy="11" r="2" fill="currentColor" />
-            <circle cx="9" cy="17" r="1.3" fill="currentColor" />
-            <circle cx="19" cy="17" r="1.3" fill="currentColor" />
-            <circle cx="14" cy="21" r="1.3" fill="currentColor" />
-            <path d="M14 13v2.5l-4 2M14 15.5l4 2M9 17l5 4M19 17l-5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span className="text-accent">local</span>
-          <span className="text-text-dim animate-pulse">-</span>
-          <span className="text-accent">ai</span>
-          <span className="text-text-dim">.run</span>
+        <div className="flex items-center justify-center mb-10">
+          <Logo />
         </div>
 
         {/* Card */}
@@ -122,10 +117,7 @@ export default function LoginClient() {
 
           {/* Error */}
           {showError && (
-            <div className="flex items-center gap-2 px-3.5 py-2.5 bg-danger/[0.08] border border-danger/20 rounded-lg text-[0.85rem] text-danger mb-5 animate-[shakeIn_0.4s_ease]">
-              <span>⚠</span>
-              <span>{errorText}</span>
-            </div>
+            <ErrorAlert message={errorText} className="mb-5" />
           )}
 
           <form onSubmit={handleLogin}>
@@ -133,8 +125,8 @@ export default function LoginClient() {
               <label className="block font-mono text-[0.72rem] text-text-muted tracking-wide uppercase mb-1.5" htmlFor="email">
                 {t("login.email")}
               </label>
-              <input
-                className={`${inputBase} ${emailErr ? inputError : ""}`}
+              <Input
+                error={emailErr}
                 type="email"
                 id="email"
                 name="email"
@@ -150,8 +142,8 @@ export default function LoginClient() {
                 {t("login.password")}
               </label>
               <div className="relative">
-                <input
-                  className={`${inputBase} ${pwErr ? inputError : ""}`}
+                <Input
+                  error={pwErr}
                   type={pwVisible ? "text" : "password"}
                   id="password"
                   name="password"
@@ -185,22 +177,16 @@ export default function LoginClient() {
                   e.preventDefault();
                   setForgotOpen(true);
                   setForgotStep(1);
+                  setResetError("");
                 }}
               >
                 {t("login.forgotPassword")}
               </a>
             </div>
 
-            <button
-              className="flex items-center justify-center gap-2 w-full py-3.5 bg-accent text-bg border-none rounded-lg font-body text-base font-semibold cursor-pointer transition-all duration-200 shadow-[0_0_30px_rgba(52,211,153,0.3)] hover:-translate-y-0.5 hover:shadow-[0_0_50px_rgba(52,211,153,0.3)] disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0"
-              type="submit"
-              disabled={login.isPending}
-            >
+            <Button variant="primary" type="submit" loading={login.isPending} className="w-full py-3.5">
               {login.isPending ? t("login.signingIn") : t("login.signIn")}
-              {login.isPending && (
-                <div className="w-[18px] h-[18px] border-2 border-bg border-t-transparent rounded-full animate-spin" />
-              )}
-            </button>
+            </Button>
           </form>
         </div>
 
@@ -280,6 +266,8 @@ export default function LoginClient() {
                 <div className="text-text-muted text-[0.9rem] font-light leading-relaxed mb-6">
                   {t("login.pasteToken")}
                 </div>
+
+                {resetError && <ErrorAlert message={resetError} className="mb-5" />}
 
                 <div className="mb-5">
                   <label className="block font-mono text-[0.72rem] text-text-muted tracking-wide uppercase mb-1.5">{t("login.resetToken")}</label>

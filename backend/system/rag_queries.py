@@ -1,6 +1,8 @@
 """Raw SQL helpers to query RAG tables (conversations, messages, query_history)
 that live in the shared PostgreSQL database."""
 
+import json
+
 from django.db import connection
 
 
@@ -29,7 +31,7 @@ def get_all_chat_data():
                     "id": row[0],
                     "role": row[1],
                     "content": row[2],
-                    "sources": row[3],
+                    "sources": json.loads(row[3]) if row[3] else None,
                     "created_at": row[4].isoformat() if row[4] else None,
                 }
                 for row in cur.fetchall()

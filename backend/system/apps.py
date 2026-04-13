@@ -1,5 +1,6 @@
+from datetime import datetime, timezone as dt_timezone
+
 from django.apps import AppConfig
-from django.utils import timezone
 
 
 class SystemConfig(AppConfig):
@@ -10,4 +11,4 @@ class SystemConfig(AppConfig):
         from django.conf import settings
 
         if not hasattr(settings, "PROCESS_START_TIME"):
-            settings.PROCESS_START_TIME = timezone.now()
+            settings.PROCESS_START_TIME = datetime.now(dt_timezone.utc)

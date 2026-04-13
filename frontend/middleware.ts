@@ -10,14 +10,15 @@ async function checkSetupStatus(): Promise<boolean | null> {
     const res = await fetch(`${BACKEND_URL}/api/auth/setup-status/`, {
       cache: "no-store",
     });
+    if (!res.ok) return null; // Backend error — treat as down
     const data = await res.json();
-    return data.is_setup_complete;
+    return data.is_setup_complete ?? null;
   } catch {
     return null; // Django is down
   }
 }
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const accessToken = request.cookies.get("access_token")?.value;
   const isAuthenticated = !!accessToken;

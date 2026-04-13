@@ -230,6 +230,8 @@ const en = {
   "dashboard.notConfigured": "Not configured",
   "dashboard.setupRequired": "Setup required",
   "dashboard.online": "● Online",
+  "dashboard.degraded": "● Degraded",
+  "dashboard.offline": "● Offline",
   "dashboard.allHealthy": "All services healthy",
   "dashboard.aiTools": "AI Tools",
   "dashboard.chatWithFiles": "Chat with Files",

@@ -19,42 +19,9 @@ import {
 } from "@/hooks/use-chat";
 import type { ProviderData } from "@/hooks/use-chat";
 import { useDownload } from "@/lib/download-provider";
-
-const AVAILABLE_PROVIDER_TEMPLATES = [
-  {
-    name: "vLLM",
-    icon: "\u26A1",
-    desc: "High-throughput serving with PagedAttention. Best for multi-user setups with high concurrency.",
-    endpoint: "http://localhost:8000",
-    type: "openai" as const,
-    meta: [
-      { label: "Default Port", value: "8000" },
-      { label: "GPU Required", value: "Yes" },
-    ],
-  },
-  {
-    name: "llama.cpp",
-    icon: "\uD83D\uDD27",
-    desc: "Lightweight C++ inference. Runs on CPU, Apple Silicon, and CUDA with minimal overhead.",
-    endpoint: "http://localhost:8080",
-    type: "openai" as const,
-    meta: [
-      { label: "Default Port", value: "8080" },
-      { label: "GPU Required", value: "No" },
-    ],
-  },
-];
-
-const PROVIDER_PICKER_OPTIONS = [
-  { name: "LM Studio", icon: "\uD83D\uDDA5\uFE0F", endpoint: "http://localhost:1234", type: "openai" as const, desc: "Discover, download, and run local LLMs with a desktop app." },
-  { name: "LocalAI", icon: "\uD83C\uDFE0", endpoint: "http://localhost:8080", type: "openai" as const, desc: "Drop-in OpenAI replacement. Run models locally with GPU/CPU." },
-  { name: "Text Gen WebUI", icon: "\uD83D\uDCAC", endpoint: "http://localhost:5000", type: "openai" as const, desc: "Gradio web UI for running large language models." },
-  { name: "Jan", icon: "\uD83E\uDD16", endpoint: "http://localhost:1337", type: "openai" as const, desc: "Open-source desktop app for running AI models offline." },
-  { name: "GPT4All", icon: "\uD83E\uDDE0", endpoint: "http://localhost:4891", type: "openai" as const, desc: "Free, local, privacy-aware chatbot. No GPU required." },
-  { name: "vLLM", icon: "\u26A1", endpoint: "http://localhost:8000", type: "openai" as const, desc: "High-throughput serving with PagedAttention for production." },
-  { name: "llama.cpp", icon: "\uD83D\uDD27", endpoint: "http://localhost:8080", type: "openai" as const, desc: "Lightweight C++ inference for CPU, Apple Silicon, and CUDA." },
-  { name: "Ollama (Extra)", icon: "\uD83E\uDDA9", endpoint: "http://localhost:11435", type: "ollama" as const, desc: "Additional Ollama instance on a different port." },
-];
+import Toast from "@/components/ui/Toast";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { AVAILABLE_PROVIDER_TEMPLATES, PROVIDER_PICKER_OPTIONS } from "@/lib/constants/providers";
 
 export default function ModelEnginesClient() {
   const { t } = useTranslation();
@@ -97,6 +64,7 @@ export default function ModelEnginesClient() {
   const updateModelConfigMutation = useUpdateModelConfig();
   const { data: allProviderModels = [] } = useAllProviderModels(providers);
   const { download, isPulling, startPull } = useDownload();
+  const [removeTarget, setRemoveTarget] = useState<ProviderData | null>(null);
 
   // Sync model config from API into local state
   useEffect(() => {
@@ -314,9 +282,16 @@ export default function ModelEnginesClient() {
   }
 
   function handleRemoveProvider(provider: ProviderData) {
-    if (!confirm(t("modelEngines.removeProviderConfirm"))) return;
-    deleteProviderMutation.mutate(provider.id, {
-      onSuccess: () => showToastMsg(t("modelEngines.providerRemoved")),
+    setRemoveTarget(provider);
+  }
+
+  function confirmRemoveProvider() {
+    if (!removeTarget) return;
+    deleteProviderMutation.mutate(removeTarget.id, {
+      onSuccess: () => {
+        showToastMsg(t("modelEngines.providerRemoved"));
+        setRemoveTarget(null);
+      },
     });
   }
 
@@ -400,6 +375,7 @@ export default function ModelEnginesClient() {
     setPullError(null);
     try {
       const res = await fetch(`/api/models/validate?name=${encodeURIComponent(name)}`);
+      if (!res.ok) throw new Error(`Validation failed: HTTP ${res.status}`);
       const data = await res.json();
       if (!data.valid) {
         setPullError(data.error || t("modelEngines.modelNotFound"));
@@ -673,7 +649,7 @@ export default function ModelEnginesClient() {
               {p.desc}
             </p>
             <div className="flex gap-6 mb-4">
-              {p.meta.map((m) => (
+              {p.meta?.map((m) => (
                 <div key={m.label} className="flex flex-col gap-0.5">
                   <span className="font-mono text-[0.65rem] text-text-dim tracking-wide uppercase">
                     {m.label}
@@ -1049,14 +1025,18 @@ export default function ModelEnginesClient() {
         </div>
       )}
 
-      {/* Toast */}
-      <div
-        className={`fixed bottom-8 right-8 bg-bg-card border border-border-accent rounded-[10px] px-5 py-3 text-[0.88rem] text-accent flex items-center gap-2 shadow-[0_8px_32px_rgba(0,0,0,0.4)] z-[1000] transition-all duration-300 ${
-          toast ? "translate-y-0 opacity-100" : "translate-y-[100px] opacity-0"
-        }`}
-      >
-        &#10004; {toast}
-      </div>
+      <ConfirmDialog
+        open={!!removeTarget}
+        title={t("modelEngines.removeProvider")}
+        description={t("modelEngines.removeProviderConfirm")}
+        confirmLabel={t("common.delete")}
+        variant="danger"
+        loading={deleteProviderMutation.isPending}
+        onCancel={() => setRemoveTarget(null)}
+        onConfirm={confirmRemoveProvider}
+      />
+
+      <Toast message={toast} />
     </>
   );
 }

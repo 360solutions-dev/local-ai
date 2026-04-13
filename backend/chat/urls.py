@@ -24,6 +24,11 @@ urlpatterns = [
         name="chat-message-delete",
     ),
     path(
+        "turns/<str:turn_id>/",
+        views.TurnDeleteView.as_view(),
+        name="chat-turn-delete",
+    ),
+    path(
         "models/",
         views.ModelListView.as_view(),
         name="chat-models",

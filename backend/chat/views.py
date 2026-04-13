@@ -193,7 +193,7 @@ class ConversationMessagesView(APIView):
         serializer = SendMessageSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         content = serializer.validated_data["content"]
-        turn_id = str(uuid.uuid4())
+        turn_id = serializer.validated_data.get("turn_id") or str(uuid.uuid4())
 
         _ensure_tables()
 
@@ -343,7 +343,12 @@ class ModelPullView(APIView):
                 resp.raise_for_status()
                 for line in resp.iter_lines():
                     if line:
-                        yield line.decode() + "\n"
+                        decoded = line.decode().strip()
+                        # Ensure proper SSE format: "data: ...\n\n"
+                        if decoded.startswith("data: "):
+                            yield decoded + "\n\n"
+                        else:
+                            yield f"data: {decoded}\n\n"
             except Exception as e:
                 yield f"data: {json.dumps({'status': 'error', 'error': str(e)})}\n\n"
 
@@ -376,6 +381,7 @@ class MessageDeleteView(APIView):
 
     def delete(self, request, message_id):
         """Delete a single message."""
+        _ensure_tables()
         with connection.cursor() as cur:
             cur.execute("DELETE FROM messages WHERE id = %s RETURNING id", [message_id])
             deleted = cur.fetchone()
@@ -385,6 +391,26 @@ class MessageDeleteView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         return Response({"message": "Message deleted."})
+
+
+class TurnDeleteView(APIView):
+    """Delete all messages (user + assistant) for a single turn.
+
+    Used by the Stop button to remove the user message and any partial/completed
+    assistant message that the backend may have persisted after the client aborted.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, turn_id):
+        _ensure_tables()
+        with connection.cursor() as cur:
+            cur.execute(
+                "DELETE FROM messages WHERE turn_id = %s RETURNING id",
+                [turn_id],
+            )
+            deleted_count = len(cur.fetchall())
+        return Response({"deleted": deleted_count})
 
 
 # ---------------------------------------------------------------------------

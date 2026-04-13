@@ -8,6 +8,8 @@ import { useInstanceInfo, useInstanceSettings, useUpdateInstanceSettings, useExp
 import { useStorageInfo, useClearCache, formatBytes } from "@/hooks/use-storage";
 import { SettingsSkeleton } from "@/components/ui/Skeleton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import Toast from "@/components/ui/Toast";
+import Button from "@/components/ui/Button";
 import { useTranslation, useLanguage, type Locale } from "@/lib/i18n";
 
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
@@ -42,6 +44,8 @@ export default function SettingsClient() {
 
   useEffect(() => {
     if (user) {
+      // Populating the form from remote data on load — legitimate effect.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDisplayName(user.display_name);
       setEmail(user.email);
     }
@@ -108,6 +112,8 @@ export default function SettingsClient() {
 
   useEffect(() => {
     if (instanceSettings && !storageSettingsLoaded) {
+      // One-shot hydration from fetched instance settings.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMaxFileSize(instanceSettings.max_file_size_mb ?? 50);
       setMaxFilesPerChat(instanceSettings.max_files_per_chat ?? 10);
       setStorageSettingsLoaded(true);
@@ -244,10 +250,9 @@ export default function SettingsClient() {
 
           {/* Buttons */}
           <div className="flex gap-3 pt-4">
-            <button
-              type="button"
-              disabled={updateProfile.isPending}
-              className="px-6 py-2.5 bg-accent text-bg border-none rounded-lg font-body text-[0.92rem] font-semibold cursor-pointer transition-all shadow-[0_0_20px_rgba(52,211,153,0.15)] hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            <Button
+              variant="primary"
+              loading={updateProfile.isPending}
               onClick={() =>
                 updateProfile.mutate(
                   { display_name: displayName },
@@ -259,10 +264,9 @@ export default function SettingsClient() {
               }
             >
               {updateProfile.isPending ? t("common.saving") : t("common.save")}
-            </button>
-            <button
-              type="button"
-              className="px-6 py-2.5 bg-transparent text-text-muted border border-border rounded-lg font-body text-[0.92rem] cursor-pointer transition-all hover:border-text-muted hover:text-text"
+            </Button>
+            <Button
+              variant="secondary"
               onClick={() => {
                 if (user) {
                   setDisplayName(user.display_name);
@@ -271,7 +275,7 @@ export default function SettingsClient() {
               }}
             >
               {t("common.cancel")}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -567,9 +571,7 @@ export default function SettingsClient() {
       )}
 
       {/* Toast */}
-      <div className={`fixed bottom-8 right-8 px-5 py-3 bg-bg-elevated border border-border-accent rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] font-mono text-[0.85rem] text-accent transition-all duration-300 ${toast ? "translate-y-0 opacity-100" : "translate-y-[100px] opacity-0"}`}>
-        ✓ {toast}
-      </div>
+      <Toast message={toast} />
     </div>
   );
 }

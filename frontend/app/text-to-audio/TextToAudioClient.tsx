@@ -123,6 +123,9 @@ export default function TextToAudioClient() {
   );
 
   useEffect(() => {
+    // Randomize wave bar heights on client only — keeps SSR deterministic
+    // and avoids a hydration mismatch on the animated waveform.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setWaveBars(Array.from({ length: 80 }, () => Math.random() * 40 + 8));
   }, []);
 

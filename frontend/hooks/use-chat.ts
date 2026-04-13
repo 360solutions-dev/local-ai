@@ -34,6 +34,7 @@ export function useConversations() {
       if (!res.ok) return [];
       return res.data.conversations;
     },
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -49,7 +50,14 @@ export function useConversationMessages(conversationId: number | null) {
       return res.data.messages;
     },
     enabled: !!conversationId,
-    staleTime: 0,
+    // Avoid `staleTime: 0`, which causes refetches to fire during an in-flight
+    // send and overwrites the optimistic "Thinking..." row before the mutation
+    // completes. We explicitly call setQueryData or invalidateQueries after
+    // sends/edits/deletes, so treating cached data as fresh for 5 minutes is
+    // safe and matches the behavior of other queries in this app.
+    staleTime: 5 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -76,6 +84,10 @@ export function useCreateConversation() {
   });
 }
 
+// Marker prefix for optimistic messages so the UI can render a pending style.
+// Real messages always have a numeric id from the server.
+export const OPTIMISTIC_PREFIX = "optimistic-";
+
 export function useSendMessage() {
   const queryClient = useQueryClient();
 
@@ -86,16 +98,20 @@ export function useSendMessage() {
       model,
       signal,
       file_filter,
+      turn_id,
     }: {
       conversationId: number;
       content: string;
       model?: string;
       signal?: AbortSignal;
       file_filter?: string;
+      turn_id?: string;
+      displayContent?: string;
     }) => {
       const body: Record<string, unknown> = { content };
       if (model) body.model = model;
       if (file_filter) body.file_filter = file_filter;
+      if (turn_id) body.turn_id = turn_id;
       const res = await apiPost<SendMessageResponse>(
         `/api/chat/conversations/${conversationId}/messages/`,
         body,
@@ -109,11 +125,100 @@ export function useSendMessage() {
       }
       return res.data;
     },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: ["chat", "messages", variables.conversationId],
+    // Optimistic update pattern: write the placeholder user + "Thinking..."
+    // assistant bubble directly into the messages cache so the UI renders
+    // from a single source of truth. onSuccess replaces the placeholders
+    // with real server data; onError rolls back. This eliminates the
+    // duplicate-bubble race that happens when the component keeps a second
+    // `pendingMessages` state in parallel with the query cache.
+    onMutate: async (variables) => {
+      const key = ["chat", "messages", variables.conversationId] as const;
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<ChatMessage[]>(key) ?? [];
+      const stamp = Date.now();
+      // Use a high-entropy id so a rapid double-send never collides.
+      const nonce = Math.random().toString(36).slice(2, 8);
+      const userId = `${OPTIMISTIC_PREFIX}user-${stamp}-${nonce}`;
+      const assistantId = `${OPTIMISTIC_PREFIX}asst-${stamp}-${nonce}`;
+      const optimisticUser: ChatMessage = {
+        // We cast to number to satisfy the ChatMessage type — the UI detects
+        // optimistic rows via the string prefix on the id before treating it
+        // as a real numeric id.
+        id: userId as unknown as number,
+        role: "user",
+        content: variables.displayContent ?? variables.content,
+        sources: null,
+        turn_id: variables.turn_id ?? null,
+        created_at: new Date().toISOString(),
+      };
+      const optimisticAssistant: ChatMessage = {
+        id: assistantId as unknown as number,
+        role: "assistant",
+        content: "Thinking...",
+        sources: null,
+        turn_id: variables.turn_id ?? null,
+        created_at: new Date().toISOString(),
+      };
+      queryClient.setQueryData<ChatMessage[]>(key, [
+        ...previous,
+        optimisticUser,
+        optimisticAssistant,
+      ]);
+      return { previous, userId, assistantId };
+    },
+    onError: (_err, variables, context) => {
+      // Roll back to the state before the optimistic insert.
+      if (!context) return;
+      queryClient.setQueryData<ChatMessage[]>(
+        ["chat", "messages", variables.conversationId],
+        context.previous,
+      );
+    },
+    onSuccess: (data, variables, context) => {
+      // Replace the optimistic rows with the real messages returned by the
+      // server. Any concurrent optimistic entries for different turns stay
+      // intact.
+      const key = ["chat", "messages", variables.conversationId] as const;
+      queryClient.setQueryData<ChatMessage[]>(key, (old = []) => {
+        const filtered = context
+          ? old.filter(
+              (m) =>
+                (m.id as unknown as string) !== context.userId &&
+                (m.id as unknown as string) !== context.assistantId,
+            )
+          : old;
+        return [...filtered, data.user_message, data.assistant_message];
       });
       queryClient.invalidateQueries({ queryKey: ["chat", "conversations"] });
+    },
+  });
+}
+
+export function useDeleteTurn() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      turnId,
+    }: {
+      turnId: string;
+      conversationId?: number | null;
+    }) => {
+      const res = await apiDelete(`/api/chat/turns/${encodeURIComponent(turnId)}/`);
+      if (!res.ok) {
+        throw new Error(
+          (res.data as { error?: { message?: string } })?.error?.message ||
+            "Failed to cancel turn.",
+        );
+      }
+      return res.data;
+    },
+    onSuccess: (_data, variables) => {
+      if (variables.conversationId) {
+        queryClient.invalidateQueries({
+          queryKey: ["chat", "messages", variables.conversationId],
+        });
+      }
     },
   });
 }
@@ -163,7 +268,7 @@ export function useDeleteConversation() {
   });
 }
 
-export function useDeleteMessage() {
+export function useDeleteMessage(conversationId?: number | null) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -178,7 +283,11 @@ export function useDeleteMessage() {
       return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["chat", "messages"] });
+      if (conversationId) {
+        queryClient.invalidateQueries({ queryKey: ["chat", "messages", conversationId] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["chat", "messages"] });
+      }
     },
   });
 }
@@ -245,6 +354,8 @@ export function useOllamaModels() {
       if (!res.ok) return [];
       return res.data.models;
     },
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -314,6 +425,7 @@ export function useIndexedFiles() {
       if (!res.ok) return [];
       return res.data.files;
     },
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -385,6 +497,8 @@ export function useProviders() {
       if (!res.ok) return [];
       return res.data.providers;
     },
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -543,6 +657,7 @@ export function useAllProviderModels(providers: ProviderData[]) {
       return results.flat();
     },
     enabled: connectedIds.length > 0,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -578,6 +693,7 @@ export function useModelConfig() {
       if (!res.ok) return EMPTY_MODEL_CONFIG;
       return res.data.config;
     },
+    refetchOnWindowFocus: true,
   });
 }
 

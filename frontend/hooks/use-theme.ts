@@ -20,6 +20,9 @@ export function useTheme() {
 
   useEffect(() => {
     const saved = (localStorage.getItem("theme") as Theme) || "dark";
+    // Legitimate localStorage hydration on mount: cannot read localStorage
+    // during SSR, so we sync once after the client is mounted.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setThemeState(saved);
     applyTheme(saved);
   }, []);

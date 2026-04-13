@@ -42,7 +42,7 @@ def _set_auth_cookies(response, user):
         samesite="Lax",
         secure=_COOKIE_SECURE,
         max_age=7 * 24 * 3600,
-        path="/api/auth/token/refresh/",
+        path="/api/auth/",
     )
     return response
 
@@ -112,7 +112,7 @@ class LogoutView(APIView):
     def post(self, request):
         response = Response({"message": "Logged out successfully."})
         response.delete_cookie("access_token", path="/")
-        response.delete_cookie("refresh_token", path="/api/auth/token/refresh/")
+        response.delete_cookie("refresh_token", path="/api/auth/")
         return response
 
 

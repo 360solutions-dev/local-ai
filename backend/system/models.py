@@ -32,10 +32,17 @@ class InstanceSettings(BaseModel):
 
     @classmethod
     def get_or_create_singleton(cls):
-        obj = cls.objects.first()
-        if obj is None:
-            obj = cls.objects.create(instance_id=f"local-{uuid.uuid4().hex[:12]}")
-        return obj
+        from django.db import IntegrityError
+
+        try:
+            obj = cls.objects.first()
+            if obj is None:
+                obj, _ = cls.objects.get_or_create(
+                    instance_id=f"local-{uuid.uuid4().hex[:12]}"
+                )
+            return obj
+        except IntegrityError:
+            return cls.objects.first()
 
 
 class Provider(BaseModel):
@@ -61,11 +68,13 @@ class Provider(BaseModel):
         return f"{self.name} ({self.endpoint})"
 
     def save(self, *args, **kwargs):
-        if self.is_default:
-            Provider.objects.filter(is_default=True).exclude(pk=self.pk).update(
-                is_default=False
-            )
-        super().save(*args, **kwargs)
+        from django.db import transaction
+        with transaction.atomic():
+            if self.is_default:
+                Provider.objects.select_for_update().filter(
+                    is_default=True
+                ).exclude(pk=self.pk).update(is_default=False)
+            super().save(*args, **kwargs)
 
 
 class ModelConfig(BaseModel):
@@ -94,7 +103,12 @@ class ModelConfig(BaseModel):
 
     @classmethod
     def get_or_create_singleton(cls):
-        obj = cls.objects.first()
-        if obj is None:
-            obj = cls.objects.create()
-        return obj
+        from django.db import IntegrityError
+
+        try:
+            obj = cls.objects.first()
+            if obj is None:
+                obj, _ = cls.objects.get_or_create(id=uuid.uuid4())
+            return obj
+        except IntegrityError:
+            return cls.objects.first()

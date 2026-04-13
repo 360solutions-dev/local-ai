@@ -20,6 +20,7 @@ export function useNotificationPreferences() {
       if (!res.ok) return null;
       return res.data.preferences;
     },
+    refetchOnWindowFocus: true,
   });
 }
 

@@ -47,6 +47,8 @@ export function useAccentColor() {
 
   useEffect(() => {
     const saved = (localStorage.getItem("accentColor") as AccentColor) || "emerald";
+    // Legitimate localStorage hydration on mount — SSR has no window.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAccentColorState(saved);
     applyAccentColor(saved);
   }, []);

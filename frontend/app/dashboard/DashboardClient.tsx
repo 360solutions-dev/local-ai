@@ -66,8 +66,8 @@ export default function DashboardClient() {
 
   const modelDisplay = loadingModels
     ? "..."
-    : totalModels > 0
-      ? models![0].name
+    : models && models.length > 0
+      ? models[0].name
       : t("dashboard.notConfigured");
 
   const modelChange = loadingModels
@@ -81,8 +81,8 @@ export default function DashboardClient() {
     : health?.ollama && health?.database
       ? t("dashboard.online")
       : health?.ollama || health?.database
-        ? "Degraded"
-        : "Offline";
+        ? t("dashboard.degraded")
+        : t("dashboard.offline");
 
   const healthChange = loadingHealth
     ? "..."

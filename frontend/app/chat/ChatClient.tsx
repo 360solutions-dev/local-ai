@@ -16,6 +16,7 @@ import {
   useConversationMessages,
   useCreateConversation,
   useSendMessage,
+  useDeleteTurn,
   useDeleteConversation,
   useRenameConversation,
   useIndexedFiles,
@@ -23,8 +24,10 @@ import {
   useDeleteFile,
   useOllamaModels,
   useHasActiveProvider,
+  OPTIMISTIC_PREFIX,
   type ChatMessage,
 } from "@/hooks/use-chat";
+import { useQueryClient } from "@tanstack/react-query";
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
@@ -88,17 +91,22 @@ export default function ChatClient() {
   const [taggedFile, setTaggedFile] = useState<{ id: string; name: string } | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-
-  // Optimistic messages shown before server confirms
-  const [pendingMessages, setPendingMessages] = useState<
-    { id: string; role: "user" | "assistant"; content: string }[]
-  >([]);
+  const activeTurnRef = useRef<{ turnId: string; conversationId: number } | null>(null);
+  // Per-chat unsent drafts. Key is the conversation id as string, or "__new__" for
+  // the new-chat/empty-state input. Kept in a ref because draft values do not need
+  // to trigger re-renders — they're read/written only on chat switch.
+  const draftsRef = useRef<Record<string, string>>({});
+  const prevChatIdRef = useRef<number | null>(null);
+  const DRAFT_NEW_KEY = "__new__";
+  const draftKey = (id: number | null) => (id === null ? DRAFT_NEW_KEY : String(id));
 
   // API hooks
+  const queryClient = useQueryClient();
   const { data: conversations = [], isLoading: convLoading } = useConversations();
   const { data: messages = [], isLoading: msgsLoading } = useConversationMessages(activeChatId);
   const createConversation = useCreateConversation();
   const sendMessage = useSendMessage();
+  const deleteTurn = useDeleteTurn();
   const deleteConversation = useDeleteConversation();
   const renameConversation = useRenameConversation();
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
@@ -111,14 +119,14 @@ export default function ChatClient() {
   const { data: ollamaModels = [], isLoading: modelsLoading } = useOllamaModels();
   const { active: hasActiveProvider, isLoading: providerLoading } = useHasActiveProvider();
 
-  // Clear pending messages when user manually switches chats (not during send)
+  // `isSwitchingRef` is set to true just before `setActiveChatId` inside
+  // handleSend so the ambient chat-switch cleanup effect doesn't nuke the
+  // newly-inserted optimistic bubbles. No-op unless that flag is set.
   const isSwitchingRef = useRef(false);
   useEffect(() => {
     if (isSwitchingRef.current) {
       isSwitchingRef.current = false;
-      return;
     }
-    setPendingMessages([]);
   }, [activeChatId]);
 
   // Auto-select first available model
@@ -128,12 +136,29 @@ export default function ChatClient() {
     }
   }, [selectedModel, ollamaModels]);
 
-  // Auto-select first conversation
+  // Note: we intentionally do NOT auto-select the first conversation. Opening the
+  // Chat page should land the user in a fresh "new chat" state (activeChatId = null)
+  // so they see the empty UI and can either type a message or click an existing
+  // conversation in the sidebar.
+
+  // Save/restore unsent input drafts when the active conversation changes.
   useEffect(() => {
-    if (!activeChatId && conversations.length > 0) {
-      setActiveChatId(conversations[0].id);
-    }
-  }, [activeChatId, conversations]);
+    const prev = prevChatIdRef.current;
+    const next = activeChatId;
+    if (prev === next) return;
+    // Save the current editor value under the previous chat's key.
+    draftsRef.current[draftKey(prev)] = input;
+    // Restore the draft (if any) for the new chat; fall back to empty.
+    setInput(draftsRef.current[draftKey(next)] ?? "");
+    prevChatIdRef.current = next;
+    // Clearing the @mention state avoids stale autocomplete leaking across chats.
+    setShowFileMention(false);
+    setFileMentionQuery("");
+    setTaggedFile(null);
+    // We intentionally only depend on activeChatId: `input` is captured fresh at the
+    // moment activeChatId changes, and we don't want this effect to fire on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChatId]);
 
   const scrollToBottom = useCallback(() => {
     const el = messagesContainerRef.current;
@@ -142,7 +167,7 @@ export default function ChatClient() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, pendingMessages, scrollToBottom]);
+  }, [messages, scrollToBottom]);
 
   // Handle input changes for @file autocomplete
   function handleInputChange(value: string) {
@@ -176,7 +201,7 @@ export default function ChatClient() {
 
     let chatId = activeChatId;
 
-    // If no active conversation, create one first
+    // If no active conversation, create one first.
     if (!chatId) {
       try {
         const conv = await createConversation.mutateAsync(undefined);
@@ -188,17 +213,9 @@ export default function ChatClient() {
       }
     }
 
-    // Use tagged file as filter
     const fileFilter = taggedFile?.name;
     const displayText = taggedFile ? `@${taggedFile.name} ${text}` : text;
 
-    // Optimistic: show user message immediately
-    const tempId = `pending-${Date.now()}`;
-    setPendingMessages((prev) => [
-      ...prev,
-      { id: tempId, role: "user", content: displayText },
-      { id: `${tempId}-thinking`, role: "assistant", content: "Thinking..." },
-    ]);
     setInput("");
     setTaggedFile(null);
     setShowFileMention(false);
@@ -206,20 +223,46 @@ export default function ChatClient() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    // Generate a turn_id so the backend tags both user + assistant messages
+    // with it. If the user hits Stop, we DELETE /api/chat/turns/<turn_id>/
+    // to remove whatever the backend may have persisted before aborting.
+    const turnId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `turn-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    activeTurnRef.current = { turnId, conversationId: chatId };
+
+    // The hook's onMutate writes optimistic user + thinking bubbles directly
+    // into the messages cache, and onSuccess replaces them with the real
+    // server rows. No separate pendingMessages state = no duplicate race.
     sendMessage.mutate(
       {
         conversationId: chatId,
         content: text,
+        displayContent: displayText,
         model: selectedModel || undefined,
         signal: controller.signal,
         file_filter: fileFilter,
+        turn_id: turnId,
       },
       {
         onSettled: () => {
-          setPendingMessages([]);
           abortControllerRef.current = null;
+          activeTurnRef.current = null;
         },
       },
+    );
+  }
+
+  function stripOptimisticFromCache(conversationId: number) {
+    queryClient.setQueryData<ChatMessage[]>(
+      ["chat", "messages", conversationId],
+      (old = []) =>
+        old.filter(
+          (m) =>
+            !(typeof m.id === "string" &&
+              (m.id as unknown as string).startsWith(OPTIMISTIC_PREFIX)),
+        ),
     );
   }
 
@@ -228,7 +271,15 @@ export default function ChatClient() {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
-    setPendingMessages([]);
+    // Remove any messages the backend may have persisted for this turn before
+    // the client disconnected — "no response returned for that message".
+    const active = activeTurnRef.current;
+    if (active) {
+      deleteTurn.mutate({ turnId: active.turnId, conversationId: active.conversationId });
+      // Also drop any optimistic bubbles left in the cache from this turn.
+      stripOptimisticFromCache(active.conversationId);
+      activeTurnRef.current = null;
+    }
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -254,14 +305,27 @@ export default function ChatClient() {
     }
   }
 
-  async function handleNewChat() {
-    try {
-      const conv = await createConversation.mutateAsync(undefined);
-      setActiveChatId(conv.id);
-      setPendingMessages([]);
-    } catch {
-      // error handled by hook
+  function handleNewChat() {
+    // Lazy creation: no API call here; a conversation is only created in
+    // handleSend when the user actually submits their first message. This
+    // prevents empty "Untitled" chats from cluttering the sidebar when the
+    // user clicks New Chat but never sends anything.
+
+    // Abort any in-flight request from the previous chat. We do NOT call
+    // deleteTurn here — the user only asked to start a new chat, not to
+    // throw away the message they already sent. The backend will finish
+    // persisting, and the full conversation will be visible on return.
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
     }
+    if (activeTurnRef.current) {
+      // Strip any optimistic bubbles left in the previous conversation's cache
+      // so returning to it doesn't show a stranded "Thinking..." bubble.
+      stripOptimisticFromCache(activeTurnRef.current.conversationId);
+      activeTurnRef.current = null;
+    }
+    setActiveChatId(null);
   }
 
   function handleDeleteConversation(convId: number) {
@@ -270,7 +334,6 @@ export default function ChatClient() {
       onSuccess: () => {
         if (activeChatId === convId) {
           setActiveChatId(null);
-          setPendingMessages([]);
         }
       },
     });
@@ -303,12 +366,9 @@ export default function ChatClient() {
   // Group conversations by date
   const grouped = groupByDate(conversations);
 
-  // Combine server messages with optimistic pending messages
-  const allMessages: (ChatMessage | { id: string; role: "user" | "assistant"; content: string; sources?: null; created_at?: null })[] = [
-    ...messages,
-    ...pendingMessages,
-  ];
-
+  // Single source of truth: the cache already contains the optimistic rows
+  // (inserted by `useSendMessage.onMutate`). No separate pending state means
+  // no duplicate-bubble race.
   const isSending = sendMessage.isPending;
 
   function renderMessage(m: { id: string | number; role: string; content: string; sources?: string[] | null; created_at?: string | null }, isPending?: boolean) {
@@ -472,11 +532,10 @@ export default function ChatClient() {
 
           <button
             type="button"
-            className="mx-3 mt-3 mb-1 py-2.5 bg-accent/15 border border-dashed border-border-accent rounded-lg text-accent font-body text-[0.88rem] font-medium cursor-pointer transition-all text-center hover:bg-accent/30 hover:border-solid disabled:opacity-50"
+            className="mx-3 mt-3 mb-1 py-2.5 bg-accent/15 border border-dashed border-border-accent rounded-lg text-accent font-body text-[0.88rem] font-medium cursor-pointer transition-all text-center hover:bg-accent/30 hover:border-solid"
             onClick={handleNewChat}
-            disabled={createConversation.isPending}
           >
-            {createConversation.isPending ? "Creating..." : t("chat.newChat")}
+            {t("chat.newChat")}
           </button>
 
           <div className="flex-1 overflow-y-auto px-2.5">
@@ -496,7 +555,7 @@ export default function ChatClient() {
                       role="button"
                       tabIndex={0}
                       className={`group relative flex items-center gap-2.5 px-3 py-2 rounded-lg text-[0.85rem] cursor-pointer transition-all mb-px ${activeChatId === c.id ? "bg-accent/15 text-accent" : "text-text-muted hover:bg-bg-card hover:text-text"}`}
-                      onClick={() => { setActiveChatId(c.id); setPendingMessages([]); }}
+                      onClick={() => { setActiveChatId(c.id); }}
                       onKeyDown={(e) => e.key === "Enter" && setActiveChatId(c.id)}
                     >
                       <span className="text-[0.8rem] opacity-60">💬</span>
@@ -597,7 +656,7 @@ export default function ChatClient() {
               </div>
             )}
 
-            {activeChatId && !msgsLoading && allMessages.length === 0 && (
+            {activeChatId && !msgsLoading && messages.length === 0 && (
               <div className="max-w-[720px] w-full mx-auto flex gap-3 animate-[msgIn_0.3s_ease]">
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[0.8rem] shrink-0 mt-0.5 bg-accent/15 border border-border-accent text-accent">🤖</div>
                 <div className="flex-1">
@@ -611,12 +670,13 @@ export default function ChatClient() {
               </div>
             )}
 
-            {allMessages.map((m) => {
-              const isPending = typeof m.id === "string" && (m.id as string).startsWith("pending-");
-              return renderMessage(
-                { ...m, id: m.id, sources: "sources" in m ? m.sources : null, created_at: "created_at" in m ? m.created_at : null },
-                isPending,
-              );
+            {messages.map((m) => {
+              // Optimistic rows from useSendMessage carry a string id with the
+              // OPTIMISTIC_PREFIX; real server rows have a numeric id.
+              const isPending =
+                typeof m.id === "string" &&
+                (m.id as unknown as string).startsWith(OPTIMISTIC_PREFIX);
+              return renderMessage(m, isPending);
             })}
           </div>
 

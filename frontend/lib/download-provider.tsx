@@ -78,9 +78,16 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
 
           for (const line of lines) {
             const trimmed = line.trim();
-            if (!trimmed.startsWith("data: ")) continue;
+            if (!trimmed) continue;
+            // Extract JSON from SSE "data: " prefix or try raw line
+            const jsonStr = trimmed.startsWith("data: ")
+              ? trimmed.slice(6)
+              : trimmed;
             try {
-              const data = JSON.parse(trimmed.slice(6));
+              const data = JSON.parse(jsonStr);
+              if (data.status === "error") {
+                throw new Error(data.error || "Pull failed");
+              }
               setDownload((prev) => ({
                 modelName: prev?.modelName || name,
                 percent: data.percent ?? prev?.percent ?? 0,
@@ -89,13 +96,15 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
                     ? "Complete!"
                     : data.status || prev?.status || "",
               }));
-              if (data.status === "error") {
-                throw new Error(data.error || "Pull failed");
-              }
             } catch (parseErr) {
-              if (parseErr instanceof Error && parseErr.message === "Pull failed") {
+              if (
+                parseErr instanceof Error &&
+                (parseErr.message === "Pull failed" ||
+                  parseErr.message.startsWith("Pull failed"))
+              ) {
                 throw parseErr;
               }
+              // Non-JSON line — skip (e.g. SSE comments or keep-alive)
             }
           }
         }

@@ -4,6 +4,16 @@ interface ApiResponse<T = Record<string, unknown>> {
   data: T;
 }
 
+async function safeJson<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    // Return a generic error structure if response isn't JSON
+    return { error: { message: text || `HTTP ${res.status}` } } as T;
+  }
+}
+
 export async function apiPost<T = Record<string, unknown>>(
   path: string,
   body: Record<string, unknown>,
@@ -17,7 +27,7 @@ export async function apiPost<T = Record<string, unknown>>(
     signal,
   });
 
-  const data = await res.json();
+  const data = await safeJson<T>(res);
   return { ok: res.ok, status: res.status, data };
 }
 
@@ -32,7 +42,7 @@ export async function apiPatch<T = Record<string, unknown>>(
     body: JSON.stringify(body),
   });
 
-  const data = await res.json();
+  const data = await safeJson<T>(res);
   return { ok: res.ok, status: res.status, data };
 }
 
@@ -40,7 +50,7 @@ export async function apiGet<T = Record<string, unknown>>(
   path: string,
 ): Promise<ApiResponse<T>> {
   const res = await fetch(path, { credentials: "include" });
-  const data = await res.json();
+  const data = await safeJson<T>(res);
   return { ok: res.ok, status: res.status, data };
 }
 
@@ -52,7 +62,7 @@ export async function apiDelete<T = Record<string, unknown>>(
     credentials: "include",
   });
 
-  const data = await res.json();
+  const data = await safeJson<T>(res);
   return { ok: res.ok, status: res.status, data };
 }
 
@@ -69,7 +79,7 @@ export async function apiUpload<T = Record<string, unknown>>(
     body: formData,
   });
 
-  const data = await res.json();
+  const data = await safeJson<T>(res);
   return { ok: res.ok, status: res.status, data };
 }
 

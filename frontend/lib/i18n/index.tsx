@@ -33,6 +33,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const saved = (localStorage.getItem("language") as Locale) || "en";
+    // Legitimate localStorage hydration on mount — SSR has no window.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLocaleState(saved);
     document.documentElement.lang = saved;
   }, []);

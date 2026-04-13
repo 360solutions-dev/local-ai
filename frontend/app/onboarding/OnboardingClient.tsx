@@ -5,6 +5,10 @@ import { FormEvent, useState } from "react";
 import { useRegister } from "@/hooks/use-auth";
 import { useSystemHealth } from "@/hooks/use-chat";
 import { useTranslation } from "@/lib/i18n";
+import Input from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
+import ErrorAlert from "@/components/ui/ErrorAlert";
+import InfoCard from "@/components/ui/InfoCard";
 
 export default function OnboardingClient() {
   const { t } = useTranslation();
@@ -45,11 +49,7 @@ export default function OnboardingClient() {
     );
   }
 
-  const inputBase =
-    "w-full px-4 py-3 bg-bg-card border border-border rounded-lg text-text font-body text-[0.95rem] outline-none transition-all duration-200 placeholder:text-text-dim focus:border-border-focus focus:shadow-[0_0_0_3px_rgba(52,211,153,0.15)]";
-
-  const btnPrimary =
-    "inline-flex items-center justify-center gap-2 w-full py-3.5 px-8 bg-accent text-bg border-none rounded-lg font-body text-base font-semibold cursor-pointer transition-all duration-200 shadow-[0_0_30px_rgba(52,211,153,0.3)] mt-2 hover:-translate-y-0.5 hover:shadow-[0_0_50px_rgba(52,211,153,0.3)] disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0";
+  const btnFullWidth = "w-full py-3.5 px-8 text-base font-semibold shadow-[0_0_30px_rgba(52,211,153,0.3)] mt-2 hover:shadow-[0_0_50px_rgba(52,211,153,0.3)]";
 
   return (
     <div className="font-body bg-bg text-text min-h-screen flex items-center justify-center overflow-hidden relative">
@@ -86,18 +86,9 @@ export default function OnboardingClient() {
             </p>
 
             <div className="flex flex-col gap-3 mb-8">
-              <div className="flex items-center gap-3 px-4 py-3 bg-bg-card border border-border rounded-[10px] text-[0.9rem] text-text-muted font-light">
-                <div className="w-8 h-8 rounded-lg bg-accent/15 border border-border-accent flex items-center justify-center text-[0.9rem] shrink-0">🔒</div>
-                <span>{t("onboarding.runsOnHardware")}</span>
-              </div>
-              <div className="flex items-center gap-3 px-4 py-3 bg-bg-card border border-border rounded-[10px] text-[0.9rem] text-text-muted font-light">
-                <div className="w-8 h-8 rounded-lg bg-accent/15 border border-border-accent flex items-center justify-center text-[0.9rem] shrink-0">🧠</div>
-                <span>{t("onboarding.bringModels")}</span>
-              </div>
-              <div className="flex items-center gap-3 px-4 py-3 bg-bg-card border border-border rounded-[10px] text-[0.9rem] text-text-muted font-light">
-                <div className="w-8 h-8 rounded-lg bg-accent/15 border border-border-accent flex items-center justify-center text-[0.9rem] shrink-0">📁</div>
-                <span>{t("onboarding.chatAndMore")}</span>
-              </div>
+              <InfoCard icon="🔒">{t("onboarding.runsOnHardware")}</InfoCard>
+              <InfoCard icon="🧠">{t("onboarding.bringModels")}</InfoCard>
+              <InfoCard icon="📁">{t("onboarding.chatAndMore")}</InfoCard>
             </div>
 
             <div className="bg-bg-elevated border border-border rounded-lg px-4 py-3 font-mono text-[0.78rem] text-text-dim leading-relaxed mb-8">
@@ -115,9 +106,9 @@ export default function OnboardingClient() {
               )}
             </div>
 
-            <button className={btnPrimary} onClick={() => setStep(2)}>
+            <Button className={btnFullWidth} onClick={() => setStep(2)}>
               {t("onboarding.letsGetStarted")}
-            </button>
+            </Button>
           </div>
         )}
 
@@ -129,28 +120,23 @@ export default function OnboardingClient() {
               {t("onboarding.createAdminSubtitle")}
             </p>
 
-            {error && (
-              <div className="flex items-center gap-2 px-3.5 py-2.5 bg-danger/[0.08] border border-danger/20 rounded-lg text-[0.85rem] text-danger mb-5 animate-[shakeIn_0.4s_ease]">
-                <span>⚠</span>
-                <span>{error}</span>
-              </div>
-            )}
+            <ErrorAlert message={error} className="mb-5" />
 
             <form onSubmit={handleAdminSubmit}>
               <div className="mb-5">
                 <label className="block font-mono text-[0.75rem] text-text-muted tracking-wide uppercase mb-2" htmlFor="displayName">{t("onboarding.displayName")}</label>
-                <input className={inputBase} type="text" id="displayName" name="displayName" placeholder={t("onboarding.displayNamePlaceholder")} required />
+                <Input type="text" id="displayName" name="displayName" placeholder={t("onboarding.displayNamePlaceholder")} required />
               </div>
 
               <div className="mb-5">
                 <label className="block font-mono text-[0.75rem] text-text-muted tracking-wide uppercase mb-2" htmlFor="email">{t("onboarding.email")}</label>
-                <input className={inputBase} type="email" id="email" name="email" placeholder={t("onboarding.emailPlaceholder")} required />
+                <Input type="email" id="email" name="email" placeholder={t("onboarding.emailPlaceholder")} required />
               </div>
 
               <div className="mb-5">
                 <label className="block font-mono text-[0.75rem] text-text-muted tracking-wide uppercase mb-2" htmlFor="password">{t("onboarding.password")}</label>
                 <div className="relative">
-                  <input className={inputBase} type={pwVisible ? "text" : "password"} id="password" name="password" placeholder={t("onboarding.passwordPlaceholder")} minLength={8} required />
+                  <Input type={pwVisible ? "text" : "password"} id="password" name="password" placeholder={t("onboarding.passwordPlaceholder")} minLength={8} required />
                   <button
                     type="button"
                     className="absolute right-3 top-1/2 -translate-y-1/2 bg-transparent border-none text-text-dim cursor-pointer text-[0.85rem] font-mono transition-colors hover:text-accent"
@@ -163,13 +149,12 @@ export default function OnboardingClient() {
 
               <div className="mb-5">
                 <label className="block font-mono text-[0.75rem] text-text-muted tracking-wide uppercase mb-2" htmlFor="confirmPassword">{t("onboarding.confirmPassword")}</label>
-                <input className={inputBase} type="password" id="confirmPassword" name="confirmPassword" placeholder={t("onboarding.confirmPasswordPlaceholder")} required />
+                <Input type="password" id="confirmPassword" name="confirmPassword" placeholder={t("onboarding.confirmPasswordPlaceholder")} required />
               </div>
 
-              <button className={btnPrimary} type="submit" disabled={register.isPending}>
+              <Button className={btnFullWidth} type="submit" loading={register.isPending}>
                 {register.isPending ? t("onboarding.creatingAccount") : t("onboarding.createAdminBtn")}
-                {register.isPending && <div className="w-[18px] h-[18px] border-2 border-bg border-t-transparent rounded-full animate-spin" />}
-              </button>
+              </Button>
             </form>
           </div>
         )}
@@ -202,9 +187,9 @@ export default function OnboardingClient() {
               </div>
             </div>
 
-            <button className={btnPrimary} onClick={() => router.push("/dashboard")}>
+            <Button className={btnFullWidth} onClick={() => router.push("/dashboard")}>
               {t("onboarding.goToDashboard")}
-            </button>
+            </Button>
           </div>
         )}
       </div>
