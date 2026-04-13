@@ -1,13 +1,9 @@
-import Sidebar from "@/components/layout/Sidebar";
-import TextToAudioClient from "./TextToAudioClient";
+import { notFound } from "next/navigation";
+
+// Text-to-Audio is currently "Coming Soon" — route disabled but client code preserved
+// in TextToAudioClient.tsx for future re-enablement.
 export const metadata = { title: "local-ai.run — Text to Audio" };
+
 export default function TextToAudioPage() {
-  return (
-    <div className="font-body bg-bg text-text min-h-screen">
-      <div className="flex min-h-screen">
-        <Sidebar activePage="text-to-audio" />
-        <main className="flex-1 overflow-y-auto"><TextToAudioClient /></main>
-      </div>
-    </div>
-  );
+  notFound();
 }

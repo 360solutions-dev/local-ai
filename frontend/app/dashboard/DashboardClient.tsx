@@ -143,7 +143,7 @@ export default function DashboardClient() {
           <div className="font-mono text-[0.75rem] text-text-dim tracking-widest uppercase mb-4">{t("dashboard.aiTools")}</div>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
             <FeatureCard active href="/chat" icon="💬" title={t("dashboard.chatWithFiles")} desc={t("dashboard.chatWithFilesDesc")} tag={t("dashboard.chatWithFilesTag")} comingSoonLabel={t("common.comingSoon")} activeLabel={t("common.active")} />
-            <FeatureCard active href="/text-to-audio" icon="🔊" title={t("dashboard.textToAudio")} desc={t("dashboard.textToAudioDesc")} tag={t("dashboard.textToAudioTag")} comingSoonLabel={t("common.comingSoon")} activeLabel={t("common.active")} />
+            <FeatureCard icon="🔊" title={t("dashboard.textToAudio")} desc={t("dashboard.textToAudioDesc")} tag={t("dashboard.textToAudioTag")} comingSoonLabel={t("common.comingSoon")} activeLabel={t("common.active")} />
             <FeatureCard icon="🖼️" title={t("dashboard.imageGeneration")} desc={t("dashboard.imageGenerationDesc")} tag={t("dashboard.imageGenerationTag")} comingSoonLabel={t("common.comingSoon")} activeLabel={t("common.active")} />
             <FeatureCard icon="📝" title={t("dashboard.summarizer")} desc={t("dashboard.summarizerDesc")} tag={t("dashboard.summarizerTag")} comingSoonLabel={t("common.comingSoon")} activeLabel={t("common.active")} />
             <FeatureCard icon="🔍" title={t("dashboard.semanticSearch")} desc={t("dashboard.semanticSearchDesc")} tag={t("dashboard.semanticSearchTag")} comingSoonLabel={t("common.comingSoon")} activeLabel={t("common.active")} />

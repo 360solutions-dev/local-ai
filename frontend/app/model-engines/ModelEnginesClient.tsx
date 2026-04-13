@@ -785,21 +785,14 @@ export default function ModelEnginesClient() {
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
             <label className="block font-mono text-[0.72rem] text-text-muted tracking-wide uppercase mb-1.5">
-              {t("sidebar.textToAudio")}
+              {t("sidebar.textToAudio")}{" "}
+              <span className="text-accent-warm text-[0.6rem]">{t("common.comingSoon").toUpperCase()}</span>
             </label>
             <select
-              value={modelSelectValue(ttsModel, ttsProviderId)}
-              onChange={(e) => handleModelSelect(e.target.value, setTtsModel, setTtsProviderId)}
-              className="w-full px-3 py-2.5 bg-bg border border-border rounded-lg text-text font-body text-[0.85rem] outline-none focus:border-border-focus appearance-none cursor-pointer"
+              disabled
+              className="w-full px-3 py-2.5 bg-bg border border-border rounded-lg text-text font-body text-[0.85rem] outline-none appearance-none opacity-40"
             >
-              <option value="">{t("modelEngines.selectModel")}</option>
-              <option value="piper-en-amy">piper-en-amy (Built-in)</option>
-              <option value="xtts-v2">xtts-v2</option>
-              {allProviderModels.filter((m) => !/embed/i.test(m.name)).map((m) => (
-                <option key={`${m.provider_id}-${m.id}`} value={`${m.provider_id}::${m.name}`}>
-                  {m.name} ({m.provider_name})
-                </option>
-              ))}
+              <option>{t("modelEngines.notAvailableYet")}</option>
             </select>
           </div>
           <div>

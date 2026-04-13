@@ -55,9 +55,9 @@ export default function Sidebar({ activePage }: SidebarProps) {
         <div className="font-mono text-[0.68rem] text-text-dim tracking-widest uppercase px-2.5 pt-3 pb-1.5">{t("sidebar.navigation")}</div>
         <NavItem href="/dashboard" icon="📊" label={t("sidebar.dashboard")} active={activePage === "dashboard"} />
         <NavItem href="/chat" icon="💬" label={t("sidebar.chatWithFiles")} active={activePage === "chat"} />
-        <NavItem href="/text-to-audio" icon="🔊" label={t("sidebar.textToAudio")} active={activePage === "text-to-audio"} />
 
         <div className="font-mono text-[0.68rem] text-text-dim tracking-widest uppercase px-2.5 pt-5 pb-1.5">{t("sidebar.comingSoon")}</div>
+        <NavItem icon="🔊" label={t("sidebar.textToAudio")} disabled />
         <NavItem icon="🖼️" label={t("sidebar.imageGeneration")} disabled />
         <NavItem icon="📝" label={t("sidebar.summarizer")} disabled />
         <NavItem icon="🔍" label={t("sidebar.semanticSearch")} disabled />

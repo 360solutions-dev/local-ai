@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const protectedRoutes = ["/dashboard", "/chat", "/settings", "/model-engines", "/text-to-audio"];
+const protectedRoutes = ["/dashboard", "/chat", "/settings", "/model-engines"];
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 
