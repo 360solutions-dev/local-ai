@@ -58,4 +58,9 @@ urlpatterns = [
         views.FileDeleteView.as_view(),
         name="chat-file-delete",
     ),
+    path(
+        "transcribe/",
+        views.TranscribeAudioView.as_view(),
+        name="chat-transcribe",
+    ),
 ]

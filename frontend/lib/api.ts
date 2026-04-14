@@ -83,6 +83,29 @@ export async function apiUpload<T = Record<string, unknown>>(
   return { ok: res.ok, status: res.status, data };
 }
 
+export async function apiUploadBlob<T = Record<string, unknown>>(
+  path: string,
+  blob: Blob,
+  fieldName = "file",
+  filename = "upload",
+  extraFields?: Record<string, string>,
+): Promise<ApiResponse<T>> {
+  const formData = new FormData();
+  formData.append(fieldName, blob, filename);
+  if (extraFields) {
+    for (const [k, v] of Object.entries(extraFields)) formData.append(k, v);
+  }
+
+  const res = await fetch(path, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+
+  const data = await safeJson<T>(res);
+  return { ok: res.ok, status: res.status, data };
+}
+
 export async function apiDownload(path: string, filename: string): Promise<void> {
   const res = await fetch(path, { credentials: "include" });
   if (!res.ok) throw new Error("Download failed");

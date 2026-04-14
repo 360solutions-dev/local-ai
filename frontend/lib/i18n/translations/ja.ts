@@ -386,6 +386,16 @@ const ja: Translations = {
   "chat.save": "保存",
   "chat.cancel": "キャンセル",
   "chat.stopped": "ユーザーにより停止されました",
+  "chat.voiceInput": "音声入力",
+  "chat.tapToSpeak": "タップして話す",
+  "chat.startRecording": "録音を開始",
+  "chat.stopRecording": "停止",
+  "chat.listening": "聞いています...",
+  "chat.transcribing": "テキストに変換中...",
+  "chat.micPermissionDenied": "マイクの権限が拒否されました。ブラウザの設定でアクセスを許可してください。",
+  "chat.voiceNotSupported": "このブラウザでは音声入力はサポートされていません。",
+  "chat.voiceError": "音声を文字起こしできませんでした。もう一度お試しください。",
+  "chat.voiceNoSpeech": "音声が検出されませんでした。もう一度お試しください。",
 };
 
 export default ja;

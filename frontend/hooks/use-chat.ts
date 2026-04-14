@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, apiUpload, apiUploadBlob } from "@/lib/api";
 
 export interface Conversation {
   id: number;
@@ -288,6 +288,37 @@ export function useDeleteMessage(conversationId?: number | null) {
       } else {
         queryClient.invalidateQueries({ queryKey: ["chat", "messages"] });
       }
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Voice transcription hook (offline whisper)
+// ---------------------------------------------------------------------------
+
+export interface TranscribeResult {
+  text: string;
+  language: string;
+  duration_ms: number;
+}
+
+export function useTranscribeAudio() {
+  return useMutation({
+    mutationFn: async ({ blob, language }: { blob: Blob; language?: string }) => {
+      const res = await apiUploadBlob<TranscribeResult>(
+        "/api/chat/transcribe/",
+        blob,
+        "audio",
+        "voice.webm",
+        language ? { language } : undefined,
+      );
+      if (!res.ok) {
+        throw new Error(
+          (res.data as unknown as { error?: { message?: string } })?.error
+            ?.message || "Failed to transcribe audio.",
+        );
+      }
+      return res.data;
     },
   });
 }

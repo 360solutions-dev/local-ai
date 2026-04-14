@@ -21,6 +21,13 @@ logger = logging.getLogger(__name__)
 RAG_SERVICE_URL = os.environ.get("RAG_SERVICE_URL", "http://localhost:8080")
 RAG_API_KEY = os.environ.get("RAG_API_KEY", "")
 
+# Whisper speech-to-text service (separate Docker container)
+WHISPER_SERVICE_URL = os.environ.get("WHISPER_SERVICE_URL", "http://localhost:8090")
+WHISPER_API_KEY = os.environ.get("WHISPER_API_KEY", "")
+# 10 MB cap on uploaded audio — enough for ~10 minutes of opus, well beyond
+# any reasonable chat-input voice clip.
+TRANSCRIBE_MAX_BYTES = 10 * 1024 * 1024
+
 def _rag_headers():
     """Return headers for RAG service requests, including API key auth."""
     headers = {}
@@ -513,4 +520,71 @@ class FileDeleteView(APIView):
             return Response(
                 {"error": {"code": "DELETE_ERROR", "message": str(e)}},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class TranscribeAudioView(APIView):
+    """Proxy a recorded audio blob to the local whisper container.
+
+    The frontend records the user's voice with MediaRecorder and POSTs the
+    resulting blob here as multipart/form-data under the field name "audio".
+    We forward the bytes to the whisper service (offline, runs locally) and
+    return its transcription. Auth and request size limits live here so the
+    whisper service stays a simple internal-only worker.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        uploaded = request.FILES.get("audio")
+        if not uploaded:
+            return Response(
+                {"error": {"code": "MISSING_AUDIO", "message": "No audio file provided."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if uploaded.size and uploaded.size > TRANSCRIBE_MAX_BYTES:
+            return Response(
+                {"error": {"code": "AUDIO_TOO_LARGE", "message": "Audio recording is too large."}},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+
+        headers = {}
+        if WHISPER_API_KEY:
+            headers["X-API-Key"] = WHISPER_API_KEY
+
+        # Optional language hint forwarded as a query param when the caller
+        # provides one (e.g. derived from the UI locale).
+        params = {}
+        language = request.data.get("language")
+        if language:
+            params["language"] = language
+
+        try:
+            files = {
+                "audio": (
+                    uploaded.name or "audio.webm",
+                    uploaded.read(),
+                    uploaded.content_type or "audio/webm",
+                ),
+            }
+            resp = requests.post(
+                urljoin(WHISPER_SERVICE_URL, "/transcribe"),
+                files=files,
+                headers=headers,
+                params=params,
+                timeout=120,
+            )
+            resp.raise_for_status()
+            return Response(resp.json())
+        except requests.HTTPError as e:
+            logger.warning("Whisper service returned %s: %s", e.response.status_code, e.response.text[:200])
+            return Response(
+                {"error": {"code": "TRANSCRIBE_FAILED", "message": "Transcription service rejected the request."}},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except requests.RequestException as e:
+            logger.exception("Whisper service unreachable")
+            return Response(
+                {"error": {"code": "TRANSCRIBE_UNAVAILABLE", "message": str(e)}},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )

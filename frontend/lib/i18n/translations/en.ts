@@ -399,6 +399,16 @@ const en = {
   "chat.save": "Save",
   "chat.cancel": "Cancel",
   "chat.stopped": "Stopped by user",
+  "chat.voiceInput": "Voice input",
+  "chat.tapToSpeak": "Tap to speak",
+  "chat.startRecording": "Start recording",
+  "chat.stopRecording": "Stop",
+  "chat.listening": "Listening...",
+  "chat.transcribing": "Converting to text...",
+  "chat.micPermissionDenied": "Microphone permission denied. Allow access in your browser settings.",
+  "chat.voiceNotSupported": "Voice input is not supported in this browser.",
+  "chat.voiceError": "Could not transcribe audio. Please try again.",
+  "chat.voiceNoSpeech": "No speech detected. Please try again.",
 } as const;
 
 export type TranslationKeys = keyof typeof en;

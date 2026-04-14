@@ -75,6 +75,8 @@ services:
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
       RAG_SERVICE_URL: http://rag:8080
       RAG_API_KEY: ${RAG_API_KEY}
+      WHISPER_SERVICE_URL: http://whisper:8090
+      WHISPER_API_KEY: ${WHISPER_API_KEY}
     volumes:
       - ./backend:/app
       # Read-only Docker socket so the storage page can report the project's
@@ -148,9 +150,32 @@ services:
     networks:
       - local-ai-net
 
+  whisper:
+    build: ./whisper
+    container_name: local-ai-whisper
+    restart: unless-stopped
+    environment:
+      WHISPER_API_KEY: ${WHISPER_API_KEY}
+      # Multilingual model — supports all 6 UI locales. Switch to *.en variants
+      # for English-only and slightly faster inference. Sizes: tiny | base | small.
+      WHISPER_MODEL: ${WHISPER_MODEL:-base}
+      # int8 is the fastest CPU compute type with negligible quality loss.
+      WHISPER_COMPUTE_TYPE: int8
+    volumes:
+      # Cache downloaded models across rebuilds so we don't re-fetch ~140 MB.
+      - whisper_models:/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - local-ai-net
+
 volumes:
   postgres_data:
   ollama_data:
+  whisper_models:
 
 networks:
   local-ai-net:

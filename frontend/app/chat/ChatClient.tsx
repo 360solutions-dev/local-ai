@@ -8,8 +8,9 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowRight, Check, Copy, Ellipsis, Pencil, Trash2 } from "lucide-react";
+import { ArrowRight, Check, Copy, Ellipsis, Mic, Pencil, Trash2 } from "lucide-react";
 import Sidebar from "@/components/layout/Sidebar";
+import VoiceInput from "@/components/ui/VoiceInput";
 import { useTranslation } from "@/lib/i18n";
 import {
   useConversations,
@@ -79,8 +80,9 @@ function parseSources(sources: string[] | null): string[] {
 }
 
 export default function ChatClient() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [filePanelOpen, setFilePanelOpen] = useState(true);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const [activeChatId, setActiveChatId] = useState<number | null>(null);
   const [modelOverlayOpen, setModelOverlayOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>("");
@@ -194,8 +196,10 @@ export default function ChatClient() {
     f.name.toLowerCase().includes(fileMentionQuery),
   );
 
-  async function handleSend() {
-    const text = input.trim();
+  async function handleSend(textOverride?: string) {
+    // Voice transcription path passes text directly because setInput() is async
+    // and we can't rely on the input state being updated before this runs.
+    const text = (textOverride ?? input).trim();
     if (!text) return;
 
     let chatId = activeChatId;
@@ -774,6 +778,16 @@ export default function ChatClient() {
               </div>
               <div className="absolute right-2.5 bottom-2.5 flex gap-1">
                 <button type="button" className="w-[34px] h-[34px] rounded-lg border border-border bg-bg-elevated text-text-muted cursor-pointer flex items-center justify-center text-[0.9rem] transition-all hover:border-accent hover:text-accent" title={t("chat.attachFile")} onClick={() => setFilePanelOpen((o) => !o)}>📎</button>
+                <button
+                  type="button"
+                  className="w-[34px] h-[34px] rounded-lg border border-border bg-bg-elevated text-text-muted cursor-pointer flex items-center justify-center transition-all hover:border-accent hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={t("chat.voiceInput")}
+                  aria-label={t("chat.voiceInput")}
+                  onClick={() => setVoiceOpen(true)}
+                  disabled={isSending}
+                >
+                  <Mic size={16} />
+                </button>
                 {isSending ? (
                   <button
                     type="button"
@@ -788,7 +802,7 @@ export default function ChatClient() {
                     type="button"
                     className="w-[34px] h-[34px] rounded-lg border-none bg-accent text-bg cursor-pointer flex items-center justify-center text-[0.9rem] transition-all hover:opacity-85 disabled:opacity-50"
                     title={t("chat.send")}
-                    onClick={handleSend}
+                    onClick={() => handleSend()}
                     disabled={!input.trim()}
                   >
                     ↑
@@ -800,6 +814,15 @@ export default function ChatClient() {
           </div>
           )}
         </div>
+
+        <VoiceInput
+          open={voiceOpen}
+          onClose={() => setVoiceOpen(false)}
+          onTranscribed={(text) => {
+            setInput(text);
+          }}
+          language={locale}
+        />
 
         {/* File Panel */}
         <div className={`w-[300px] bg-bg-elevated border-l border-border flex-col shrink-0 ${filePanelOpen ? "flex" : "hidden"}`}>

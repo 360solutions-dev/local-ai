@@ -386,6 +386,16 @@ const fr: Translations = {
   "chat.save": "Enregistrer",
   "chat.cancel": "Annuler",
   "chat.stopped": "Arrêté par l'utilisateur",
+  "chat.voiceInput": "Entrée vocale",
+  "chat.tapToSpeak": "Appuyez pour parler",
+  "chat.startRecording": "Démarrer l'enregistrement",
+  "chat.stopRecording": "Arrêter",
+  "chat.listening": "À l'écoute...",
+  "chat.transcribing": "Conversion en texte...",
+  "chat.micPermissionDenied": "Accès au microphone refusé. Autorisez l'accès dans les paramètres du navigateur.",
+  "chat.voiceNotSupported": "L'entrée vocale n'est pas prise en charge par ce navigateur.",
+  "chat.voiceError": "Impossible de transcrire l'audio. Veuillez réessayer.",
+  "chat.voiceNoSpeech": "Aucune parole détectée. Veuillez réessayer.",
 };
 
 export default fr;

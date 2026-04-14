@@ -386,6 +386,16 @@ const zh: Translations = {
   "chat.save": "保存",
   "chat.cancel": "取消",
   "chat.stopped": "已被用户停止",
+  "chat.voiceInput": "语音输入",
+  "chat.tapToSpeak": "点击说话",
+  "chat.startRecording": "开始录音",
+  "chat.stopRecording": "停止",
+  "chat.listening": "正在聆听...",
+  "chat.transcribing": "正在转换为文本...",
+  "chat.micPermissionDenied": "麦克风权限被拒绝。请在浏览器设置中允许访问。",
+  "chat.voiceNotSupported": "此浏览器不支持语音输入。",
+  "chat.voiceError": "无法转录音频。请重试。",
+  "chat.voiceNoSpeech": "未检测到语音。请重试。",
 };
 
 export default zh;

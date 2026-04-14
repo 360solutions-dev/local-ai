@@ -386,6 +386,16 @@ const de: Translations = {
   "chat.save": "Speichern",
   "chat.cancel": "Abbrechen",
   "chat.stopped": "Vom Benutzer gestoppt",
+  "chat.voiceInput": "Spracheingabe",
+  "chat.tapToSpeak": "Zum Sprechen tippen",
+  "chat.startRecording": "Aufnahme starten",
+  "chat.stopRecording": "Stopp",
+  "chat.listening": "Höre zu...",
+  "chat.transcribing": "In Text umwandeln...",
+  "chat.micPermissionDenied": "Mikrofonzugriff verweigert. Erlauben Sie den Zugriff in den Browsereinstellungen.",
+  "chat.voiceNotSupported": "Spracheingabe wird in diesem Browser nicht unterstützt.",
+  "chat.voiceError": "Audio konnte nicht transkribiert werden. Bitte erneut versuchen.",
+  "chat.voiceNoSpeech": "Keine Sprache erkannt. Bitte erneut versuchen.",
 };
 
 export default de;
