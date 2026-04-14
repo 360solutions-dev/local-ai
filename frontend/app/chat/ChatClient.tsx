@@ -29,6 +29,7 @@ import {
   type ChatMessage,
 } from "@/hooks/use-chat";
 import { useQueryClient } from "@tanstack/react-query";
+import { useDownload } from "@/lib/download-provider";
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
@@ -122,6 +123,11 @@ export default function ChatClient() {
   const { data: ollamaModels = [], isLoading: modelsLoading } = useOllamaModels();
   const { active: hasActiveProvider, isLoading: providerLoading } = useHasActiveProvider();
   const { data: whisperHealth } = useWhisperHealth();
+  const { download, isPulling, startPull } = useDownload();
+  const [showPullModal, setShowPullModal] = useState(false);
+  const [pullInput, setPullInput] = useState("");
+  const [pullError, setPullError] = useState<string | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
 
   // `isSwitchingRef` is set to true just before `setActiveChatId` inside
   // handleSend so the ambient chat-switch cleanup effect doesn't nuke the
@@ -198,6 +204,56 @@ export default function ChatClient() {
   const mentionFiles = indexedFiles.filter((f) =>
     f.name.toLowerCase().includes(fileMentionQuery),
   );
+
+  function validateModelName(name: string): string | null {
+    if (!name) return t("modelEngines.modelNameRequired");
+    if (name.length > 200) return t("modelEngines.modelNameTooLong");
+    const pattern = /^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?(\/[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?)?(:[a-zA-Z0-9][a-zA-Z0-9._-]*)?$/;
+    if (!pattern.test(name)) return t("modelEngines.invalidModelName");
+    return null;
+  }
+
+  async function handlePullModel() {
+    const name = pullInput.trim();
+    if (!name || isPulling || isValidating) return;
+
+    const error = validateModelName(name);
+    if (error) {
+      setPullError(error);
+      return;
+    }
+
+    const nameWithTag = name.includes(":") ? name : `${name}:latest`;
+    const nameWithoutTag = name.split(":")[0];
+    const alreadyExists = ollamaModels.some(
+      (m) => m.name === name || m.name === nameWithTag || m.name === nameWithoutTag || m.name.split(":")[0] === nameWithoutTag,
+    );
+    if (alreadyExists) {
+      setPullError(t("modelEngines.modelAlreadyExists"));
+      return;
+    }
+
+    setIsValidating(true);
+    setPullError(null);
+    try {
+      const res = await fetch(`/api/models/validate?name=${encodeURIComponent(name)}`);
+      if (!res.ok) throw new Error(`Validation failed: HTTP ${res.status}`);
+      const data = await res.json();
+      if (!data.valid) {
+        setPullError(data.error || t("modelEngines.modelNotFound"));
+        return;
+      }
+    } catch {
+      // If validation endpoint is unreachable, proceed anyway
+    } finally {
+      setIsValidating(false);
+    }
+
+    setShowPullModal(false);
+    setPullInput("");
+    setPullError(null);
+    startPull(name);
+  }
 
   async function handleSend(textOverride?: string) {
     // Voice transcription path passes text directly because setInput() is async
@@ -922,14 +978,43 @@ export default function ChatClient() {
                   Showing models installed in Ollama
                 </p>
               </div>
-              <button type="button" className="bg-transparent border-none text-text-dim cursor-pointer text-xl px-2 py-1 rounded transition-colors hover:text-danger" onClick={() => setModelOverlayOpen(false)}>✕</button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowPullModal(true); setPullError(null); }}
+                  disabled={isPulling}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-bg border-none rounded-lg font-body text-[0.8rem] font-semibold cursor-pointer transition-all hover:opacity-85 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isPulling ? t("modelEngines.downloading") : t("modelEngines.pullModel")}
+                </button>
+                <button type="button" className="bg-transparent border-none text-text-dim cursor-pointer text-xl px-2 py-1 rounded transition-colors hover:text-danger" onClick={() => setModelOverlayOpen(false)}>✕</button>
+              </div>
             </div>
 
-            {ollamaModels.length === 0 ? (
+            {download && (
+              <div className="mb-4 bg-bg-card border border-border rounded-xl p-3">
+                <div className="flex justify-between font-mono text-xs text-text-muted mb-1.5">
+                  <span>{download.status} — {download.modelName}</span>
+                  <span>{download.percent}%</span>
+                </div>
+                <div className="w-full h-1.5 bg-border rounded-full overflow-hidden">
+                  <div className="h-full bg-accent rounded-full transition-all duration-300" style={{ width: `${download.percent}%` }} />
+                </div>
+              </div>
+            )}
+
+            {ollamaModels.length === 0 && !download ? (
               <div className="text-center py-8 text-text-dim">
                 <div className="text-2xl mb-2">🤖</div>
                 <div className="text-[0.85rem]">No models found in Ollama</div>
-                <div className="text-[0.75rem] mt-1">Run: docker compose exec ollama ollama pull llama3.1:8b</div>
+                <button
+                  type="button"
+                  onClick={() => { setShowPullModal(true); setPullError(null); }}
+                  className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-accent text-bg border-none rounded-lg font-body text-[0.85rem] font-semibold cursor-pointer transition-all hover:opacity-85"
+                >
+                  <Download size={14} />
+                  {t("modelEngines.pullModel")}
+                </button>
               </div>
             ) : (
               <div>
@@ -962,6 +1047,62 @@ export default function ChatClient() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Pull Modal */}
+      {showPullModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1001] backdrop-blur-sm">
+          <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-[460px] p-8 shadow-[0_25px_80px_rgba(0,0,0,0.6)] relative">
+            <button
+              onClick={() => setShowPullModal(false)}
+              className="absolute top-4 right-4 bg-transparent border-none text-text-dim text-xl cursor-pointer"
+            >
+              &times;
+            </button>
+            <h3 className="text-xl font-semibold mb-1">{t("modelEngines.pullNewModel")}</h3>
+            <p className="text-text-muted text-[0.88rem] font-light mb-5">
+              {t("modelEngines.pullModelDesc")}{" "}
+              <a
+                href="https://ollama.com/library"
+                target="_blank"
+                rel="noreferrer"
+                className="text-accent"
+              >
+                ollama.com/library
+              </a>
+              .
+            </p>
+            <div className="flex gap-2">
+              <input
+                value={pullInput}
+                onChange={(e) => {
+                  setPullInput(e.target.value);
+                  if (pullError) setPullError(null);
+                }}
+                onKeyDown={(e) => e.key === "Enter" && handlePullModel()}
+                placeholder={t("modelEngines.pullPlaceholder")}
+                className={`flex-1 px-4 py-3 bg-bg-card border rounded-lg text-text font-mono text-[0.88rem] outline-none focus:border-border-focus ${
+                  pullError ? "border-danger" : "border-border"
+                }`}
+              />
+              <button
+                onClick={handlePullModel}
+                disabled={isValidating}
+                className="px-5 py-3 bg-accent text-bg border-none rounded-lg font-body font-semibold text-[0.88rem] cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isValidating ? t("modelEngines.validating") : t("modelEngines.pull")}
+              </button>
+            </div>
+            {pullError && (
+              <div className="font-mono text-[0.78rem] text-danger mt-2">
+                {pullError}
+              </div>
+            )}
+            <div className="font-mono text-[0.72rem] text-text-dim mt-2">
+              {t("modelEngines.popular")}
+            </div>
           </div>
         </div>
       )}
