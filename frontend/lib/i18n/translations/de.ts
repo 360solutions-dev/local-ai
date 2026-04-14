@@ -289,6 +289,9 @@ const de: Translations = {
   "modelEngines.invalidModelName": "Ungültiges Format. Verwenden Sie: model, model:tag oder namespace/model:tag",
   "modelEngines.modelNotFound": "Modell nicht in der Ollama-Bibliothek gefunden. Modelle unter ollama.com/library durchsuchen",
   "modelEngines.modelAlreadyExists": "Dieses Modell ist bereits heruntergeladen.",
+  "modelEngines.whisperService": "Whisper",
+  "modelEngines.whisperDescription": "Lokaler Sprache-zu-Text-Dienst mit faster-whisper.",
+  "modelEngines.whisperType": "Sprache-zu-Text",
   "modelEngines.validating": "Wird überprüft...",
   "modelEngines.connectProvider": "Anbieter verbinden",
   "modelEngines.connectProviderDesc": "Geben Sie die Verbindungsdetails für diesen Anbieter ein.",
@@ -395,6 +398,8 @@ const de: Translations = {
   "chat.micPermissionDenied": "Mikrofonzugriff verweigert. Erlauben Sie den Zugriff in den Browsereinstellungen.",
   "chat.voiceNotSupported": "Spracheingabe wird in diesem Browser nicht unterstützt.",
   "chat.voiceError": "Audio konnte nicht transkribiert werden. Bitte erneut versuchen.",
+  "chat.whisperDisconnected": "Whisper nicht verbunden",
+  "chat.whisperDisconnectedDesc": "Verbinden Sie den Whisper-Dienst auf der Modell-Engines-Seite, um die Spracheingabe zu nutzen.",
   "chat.voiceNoSpeech": "Keine Sprache erkannt. Bitte erneut versuchen.",
 };
 

@@ -24,6 +24,7 @@ import {
   useDeleteFile,
   useOllamaModels,
   useHasActiveProvider,
+  useWhisperHealth,
   OPTIMISTIC_PREFIX,
   type ChatMessage,
 } from "@/hooks/use-chat";
@@ -83,6 +84,7 @@ export default function ChatClient() {
   const { t, locale } = useTranslation();
   const [filePanelOpen, setFilePanelOpen] = useState(true);
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const [whisperAlert, setWhisperAlert] = useState(false);
   const [activeChatId, setActiveChatId] = useState<number | null>(null);
   const [modelOverlayOpen, setModelOverlayOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>("");
@@ -119,6 +121,7 @@ export default function ChatClient() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: ollamaModels = [], isLoading: modelsLoading } = useOllamaModels();
   const { active: hasActiveProvider, isLoading: providerLoading } = useHasActiveProvider();
+  const { data: whisperHealth } = useWhisperHealth();
 
   // `isSwitchingRef` is set to true just before `setActiveChatId` inside
   // handleSend so the ambient chat-switch cleanup effect doesn't nuke the
@@ -783,7 +786,14 @@ export default function ChatClient() {
                   className="w-[34px] h-[34px] rounded-lg border border-border bg-bg-elevated text-text-muted cursor-pointer flex items-center justify-center transition-all hover:border-accent hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed"
                   title={t("chat.voiceInput")}
                   aria-label={t("chat.voiceInput")}
-                  onClick={() => setVoiceOpen(true)}
+                  onClick={() => {
+                    const disabled = typeof window !== "undefined" && localStorage.getItem("whisper_disabled") === "true";
+                    if (disabled || !whisperHealth?.connected) {
+                      setWhisperAlert(true);
+                    } else {
+                      setVoiceOpen(true);
+                    }
+                  }}
                   disabled={isSending}
                 >
                   <Mic size={16} />
@@ -822,6 +832,7 @@ export default function ChatClient() {
             setInput(text);
           }}
           language={locale}
+          activeModel={whisperHealth?.model || ""}
         />
 
         {/* File Panel */}
@@ -951,6 +962,34 @@ export default function ChatClient() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Whisper not connected alert */}
+      {whisperAlert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
+          <div className="w-[min(400px,90vw)] bg-bg-elevated border border-border rounded-2xl shadow-2xl p-6 text-center">
+            <div className="w-14 h-14 rounded-full bg-accent-warm/15 border-2 border-accent-warm flex items-center justify-center text-2xl mx-auto mb-4">
+              🎙️
+            </div>
+            <h2 className="text-[1.1rem] font-bold mb-2">{t("chat.whisperDisconnected")}</h2>
+            <p className="text-text-muted text-[0.85rem] font-light mb-6">{t("chat.whisperDisconnectedDesc")}</p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setWhisperAlert(false)}
+                className="flex-1 px-4 py-2.5 bg-transparent text-text-muted border border-border rounded-lg font-body text-[0.85rem] cursor-pointer transition-all hover:border-text-muted"
+              >
+                {t("common.close")}
+              </button>
+              <Link
+                href="/model-engines"
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-accent text-bg border-none rounded-lg font-body text-[0.85rem] font-semibold no-underline cursor-pointer transition-all hover:opacity-85"
+              >
+                {t("sidebar.modelEngines")} <ArrowRight size={16} />
+              </Link>
+            </div>
           </div>
         </div>
       )}

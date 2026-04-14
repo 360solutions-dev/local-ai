@@ -346,6 +346,30 @@ export function useSystemHealth() {
 }
 
 // ---------------------------------------------------------------------------
+// Whisper service health hook
+// ---------------------------------------------------------------------------
+
+export interface WhisperHealth {
+  connected: boolean;
+  model: string;
+  endpoint: string;
+  latency_ms?: number;
+}
+
+export function useWhisperHealth() {
+  return useQuery({
+    queryKey: ["system", "whisper-health"],
+    queryFn: async () => {
+      const res = await apiGet<WhisperHealth>("/api/system/services/whisper/health/");
+      if (!res.ok) return { connected: false, model: "", endpoint: "" } as WhisperHealth;
+      return res.data;
+    },
+    refetchInterval: 15_000,
+  });
+}
+
+
+// ---------------------------------------------------------------------------
 // Provider connection test hook
 // ---------------------------------------------------------------------------
 

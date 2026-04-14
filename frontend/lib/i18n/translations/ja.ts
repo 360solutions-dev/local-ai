@@ -289,6 +289,9 @@ const ja: Translations = {
   "modelEngines.invalidModelName": "形式が無効です。形式：model、model:tag、または namespace/model:tag",
   "modelEngines.modelNotFound": "Ollamaライブラリにモデルが見つかりません。ollama.com/library で確認してください",
   "modelEngines.modelAlreadyExists": "このモデルは既にダウンロード済みです。",
+  "modelEngines.whisperService": "Whisper",
+  "modelEngines.whisperDescription": "faster-whisperによるローカル音声テキスト変換サービス。",
+  "modelEngines.whisperType": "音声テキスト変換",
   "modelEngines.validating": "確認中...",
   "modelEngines.connectProvider": "プロバイダーを接続",
   "modelEngines.connectProviderDesc": "このプロバイダーの接続情報を入力してください。",
@@ -395,6 +398,8 @@ const ja: Translations = {
   "chat.micPermissionDenied": "マイクの権限が拒否されました。ブラウザの設定でアクセスを許可してください。",
   "chat.voiceNotSupported": "このブラウザでは音声入力はサポートされていません。",
   "chat.voiceError": "音声を文字起こしできませんでした。もう一度お試しください。",
+  "chat.whisperDisconnected": "Whisper未接続",
+  "chat.whisperDisconnectedDesc": "音声入力を使用するには、モデルエンジンページからWhisperサービスを接続してください。",
   "chat.voiceNoSpeech": "音声が検出されませんでした。もう一度お試しください。",
 };
 

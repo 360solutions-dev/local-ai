@@ -16,6 +16,7 @@ import {
   useUpdateModelConfig,
   useHasActiveProvider,
   useAllProviderModels,
+  useWhisperHealth,
 } from "@/hooks/use-chat";
 import type { ProviderData } from "@/hooks/use-chat";
 import { useDownload } from "@/lib/download-provider";
@@ -64,6 +65,9 @@ export default function ModelEnginesClient() {
   const updateModelConfigMutation = useUpdateModelConfig();
   const { data: allProviderModels = [] } = useAllProviderModels(providers);
   const { download, isPulling, startPull } = useDownload();
+  const { data: whisperHealth } = useWhisperHealth();
+  const [whisperDisabled, setWhisperDisabled] = useState(() => typeof window !== "undefined" && localStorage.getItem("whisper_disabled") === "true");
+  const whisperConnected = whisperHealth?.connected && !whisperDisabled;
   const [removeTarget, setRemoveTarget] = useState<ProviderData | null>(null);
 
   // Sync model config from API into local state
@@ -140,6 +144,31 @@ export default function ModelEnginesClient() {
         },
       },
     );
+  }
+
+  function testWhisperConnection() {
+    setTestResults((prev) => ({ ...prev, Whisper: { status: "loading" } }));
+    fetch("/api/system/services/whisper/health/", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.connected) {
+          setTestResults((prev) => ({
+            ...prev,
+            Whisper: { status: "success", latency: `${data.latency_ms}ms` },
+          }));
+        } else {
+          setTestResults((prev) => ({
+            ...prev,
+            Whisper: { status: "error", error: data.error || "Service not reachable" },
+          }));
+        }
+      })
+      .catch(() => {
+        setTestResults((prev) => ({
+          ...prev,
+          Whisper: { status: "error", error: "Request failed" },
+        }));
+      });
   }
 
   function openConnectModal(template: typeof AVAILABLE_PROVIDER_TEMPLATES[0]) {
@@ -448,6 +477,7 @@ export default function ModelEnginesClient() {
         </div>
       )}
 
+
       {/* Connected Providers */}
       <div className="font-mono text-xs text-text-dim tracking-widest uppercase mb-4">
         {t("modelEngines.connectedProviders")}
@@ -455,10 +485,12 @@ export default function ModelEnginesClient() {
       <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
         {providersLoading ? (
           <div className="px-4 py-6 text-center text-text-dim text-[0.85rem]">Loading providers...</div>
-        ) : providers.length === 0 ? (
-          <div className="px-4 py-6 text-center text-text-dim text-[0.85rem]">No providers connected. Use &quot;+ Connect&quot; below to add one.</div>
         ) : (
-          providers.map((p) => {
+          <>
+          {providers.length === 0 && (
+            <div className="px-4 py-6 text-center text-text-dim text-[0.85rem]">No providers connected. Use &quot;+ Connect&quot; below to add one.</div>
+          )}
+          {providers.map((p) => {
             const isOllama = p.name === "Ollama";
             const connected = isOllama ? (p.is_connected && (health?.ollama ?? true)) : p.is_connected;
             return (
@@ -620,7 +652,114 @@ export default function ModelEnginesClient() {
                 )}
               </div>
             );
-          })
+          })}
+
+          {/* Whisper Service Card */}
+          <div
+            className={`bg-bg-card border rounded-[14px] p-6 relative overflow-hidden transition-all hover:border-border-accent ${
+              whisperConnected ? "border-border-accent" : "border-border"
+            }`}
+          >
+            {whisperConnected && (
+              <div className="absolute top-0 left-0 right-0 h-0.5 bg-accent" />
+            )}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-[10px] flex items-center justify-center text-xl bg-bg border border-border">
+                  🎙️
+                </div>
+                <span className="text-[1.05rem] font-semibold">{t("modelEngines.whisperService")}</span>
+              </div>
+              {whisperConnected ? (
+                <span className="font-mono text-[0.68rem] px-2 py-0.5 rounded text-accent bg-accent/15">
+                  {t("common.connected")}
+                </span>
+              ) : (
+                <span className="font-mono text-[0.68rem] px-2 py-0.5 rounded text-text-dim bg-bg border border-border">
+                  {t("common.notConnected")}
+                </span>
+              )}
+            </div>
+            <p className="text-text-muted text-[0.85rem] font-light leading-relaxed mb-4">
+              {t("modelEngines.whisperDescription")}
+            </p>
+            <div className="flex gap-6 mb-4">
+              <div className="flex flex-col gap-0.5">
+                <span className="font-mono text-[0.65rem] text-text-dim tracking-wide uppercase">Endpoint</span>
+                <span className="text-[0.85rem] font-medium">{whisperHealth?.endpoint || "—"}</span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="font-mono text-[0.65rem] text-text-dim tracking-wide uppercase">Type</span>
+                <span className="text-[0.85rem] font-medium">{t("modelEngines.whisperType")}</span>
+              </div>
+              {whisperHealth?.model && (
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-mono text-[0.65rem] text-text-dim tracking-wide uppercase">{t("modelEngines.model")}</span>
+                  <span className="text-[0.85rem] font-medium text-accent">{whisperHealth.model}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 flex-wrap">
+              {whisperConnected ? (
+                <>
+                  <button
+                    onClick={testWhisperConnection}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-transparent text-text-muted border border-border rounded-md font-body text-[0.82rem] font-medium cursor-pointer transition-all hover:border-text-muted hover:text-text"
+                  >
+                    {t("modelEngines.testConnection")}
+                  </button>
+                  <button
+                    onClick={() => {
+                      localStorage.setItem("whisper_disabled", "true");
+                      setWhisperDisabled(true);
+                      showToastMsg(t("modelEngines.providerDisconnected"));
+                    }}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-transparent text-danger border border-danger/30 rounded-md font-body text-[0.82rem] cursor-pointer transition-all hover:bg-danger/10 hover:border-danger"
+                  >
+                    {t("modelEngines.disconnect")}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => {
+                    localStorage.removeItem("whisper_disabled");
+                    setWhisperDisabled(false);
+                    testWhisperConnection();
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-bg border-none rounded-lg font-body text-[0.82rem] font-semibold cursor-pointer transition-all hover:-translate-y-0.5"
+                >
+                  {t("modelEngines.reconnect")}
+                </button>
+              )}
+            </div>
+            {testResults["Whisper"] && (
+              <div className="flex items-center gap-3 px-3 py-2 bg-bg border border-border rounded-lg mt-3">
+                <div
+                  className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                    testResults["Whisper"].status === "loading"
+                      ? "bg-accent-warm animate-pulse"
+                      : testResults["Whisper"].status === "success"
+                      ? "bg-accent shadow-[0_0_8px_rgba(52,211,153,0.3)]"
+                      : "bg-danger"
+                  }`}
+                />
+                <span className="flex-1 font-mono text-[0.8rem] text-text-muted">
+                  {testResults["Whisper"].status === "loading"
+                    ? t("modelEngines.testingConnection")
+                    : testResults["Whisper"].status === "success"
+                    ? t("modelEngines.connectionSuccessful")
+                    : testResults["Whisper"].error || "Connection failed"}
+                </span>
+                {testResults["Whisper"].latency && (
+                  <span className="font-mono text-[0.75rem] text-accent">
+                    {testResults["Whisper"].latency}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          </>
         )}
       </div>
 

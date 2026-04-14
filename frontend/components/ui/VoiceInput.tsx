@@ -9,18 +9,10 @@ import ErrorAlert from "./ErrorAlert";
 interface VoiceInputProps {
   open: boolean;
   onClose: () => void;
-  /**
-   * Called with the transcribed text once the user stops recording and the
-   * whisper service returns. The chat parent uses this to drop the text into
-   * the chat pipeline (auto-send).
-   */
   onTranscribed: (text: string) => void;
-  /**
-   * BCP-47 language hint forwarded to whisper. Whisper does its own language
-   * detection if omitted, but providing the UI locale improves accuracy on
-   * very short utterances. Optional.
-   */
   language?: string;
+  /** Active whisper model name shown as a badge, e.g. "base" */
+  activeModel?: string;
 }
 
 // Hard cap on recording length — keeps the upload bounded and matches the
@@ -29,7 +21,7 @@ const MAX_RECORD_SECONDS = 60;
 
 type Phase = "idle" | "recording" | "transcribing";
 
-export default function VoiceInput({ open, onClose, onTranscribed, language }: VoiceInputProps) {
+export default function VoiceInput({ open, onClose, onTranscribed, language, activeModel }: VoiceInputProps) {
   const { t } = useTranslation();
   const transcribe = useTranscribeAudio();
 
@@ -209,7 +201,12 @@ export default function VoiceInput({ open, onClose, onTranscribed, language }: V
     >
       <div className="w-[min(420px,90vw)] bg-bg-elevated border border-border rounded-2xl shadow-2xl p-6 flex flex-col items-center gap-5">
         <div className="w-full flex items-center justify-between">
-          <div className="text-[0.95rem] font-semibold text-text">{t("chat.voiceInput")}</div>
+          <div className="text-[0.95rem] font-semibold text-text flex items-center gap-2">
+            {t("chat.voiceInput")}
+            {activeModel && (
+              <span className="font-mono text-[0.72rem] text-accent bg-accent/15 px-2 py-0.5 rounded">{activeModel} · Whisper</span>
+            )}
+          </div>
           <button
             type="button"
             onClick={handleCancel}

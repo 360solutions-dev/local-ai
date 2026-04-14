@@ -694,6 +694,50 @@ class ProviderTestView(APIView):
             return Response({"connected": False, "error": str(e)})
 
 
+class WhisperHealthView(APIView):
+    """Check connectivity to the local Whisper speech-to-text service."""
+
+    permission_classes = [IsAuthenticated]
+
+    _WHISPER_URL = os.environ.get("WHISPER_SERVICE_URL", "http://localhost:8090")
+
+    _DOCKER_HOST_MAP = {
+        ("localhost", 8090): "whisper",
+        ("127.0.0.1", 8090): "whisper",
+    }
+
+    def _resolve_url(self) -> str:
+        parsed = urlparse(self._WHISPER_URL)
+        hostname = parsed.hostname or ""
+        port = parsed.port or 80
+        docker_host = self._DOCKER_HOST_MAP.get((hostname, port))
+        if docker_host:
+            return f"{parsed.scheme}://{docker_host}:{port}"
+        return self._WHISPER_URL
+
+    def get(self, request):
+        health_url = f"{self._resolve_url().rstrip('/')}/health"
+        endpoint = self._WHISPER_URL.replace("http://", "").replace("https://", "")
+        try:
+            start = time.monotonic()
+            resp = http_requests.get(health_url, timeout=5)
+            latency_ms = round((time.monotonic() - start) * 1000)
+            resp.raise_for_status()
+            data = resp.json()
+            return Response({
+                "connected": True,
+                "model": data.get("model", ""),
+                "endpoint": endpoint,
+                "latency_ms": latency_ms,
+            })
+        except http_requests.ConnectionError:
+            return Response({"connected": False, "model": "", "endpoint": endpoint, "error": "Connection refused"})
+        except http_requests.Timeout:
+            return Response({"connected": False, "model": "", "endpoint": endpoint, "error": "Connection timed out"})
+        except Exception as e:
+            return Response({"connected": False, "model": "", "endpoint": endpoint, "error": str(e)})
+
+
 class FactoryResetView(APIView):
     permission_classes = [IsAdminUser]
 
