@@ -361,6 +361,7 @@ export default function SettingsClient() {
                 {([
                   [`🧠 ${t("settings.storage.models")}`, storageInfo.breakdown.models],
                   [`⚙️ ${t("settings.storage.systemModels")}`, storageInfo.breakdown.system_models],
+                  [`🎙️ ${t("settings.storage.whisperModels")}`, storageInfo.breakdown.whisper_models],
                   [`📁 ${t("settings.storage.uploadedFiles")}`, storageInfo.breakdown.uploaded_files],
                   [`🔗 ${t("settings.storage.vectorEmbeddings")}`, storageInfo.breakdown.vector_embeddings],
                   [`💬 ${t("settings.storage.chatHistory")}`, storageInfo.breakdown.chat_history],

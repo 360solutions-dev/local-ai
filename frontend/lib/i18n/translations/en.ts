@@ -93,6 +93,7 @@ const en = {
   "settings.storage.systemModels": "System Models (Embedding)",
   "settings.storage.uploadedFiles": "Uploaded Files",
   "settings.storage.vectorEmbeddings": "Vector Embeddings",
+  "settings.storage.whisperModels": "Whisper Models (Speech)",
   "settings.storage.chatHistory": "Chat History",
   "settings.storage.uploadLimits": "File Upload Limits",
   "settings.storage.maxFileSize": "Max File Size",

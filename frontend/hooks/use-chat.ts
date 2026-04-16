@@ -264,6 +264,7 @@ export function useDeleteConversation() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["chat", "conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["system", "storage"] });
     },
   });
 }
@@ -410,6 +411,7 @@ export function usePullWhisperModel() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["system", "whisper-models"] });
       queryClient.invalidateQueries({ queryKey: ["system", "whisper-health"] });
+      queryClient.invalidateQueries({ queryKey: ["system", "storage"] });
     },
   });
 }
@@ -430,6 +432,7 @@ export function useDeleteWhisperModel() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["system", "whisper-models"] });
       queryClient.invalidateQueries({ queryKey: ["system", "whisper-health"] });
+      queryClient.invalidateQueries({ queryKey: ["system", "storage"] });
     },
   });
 }
@@ -546,6 +549,7 @@ export function usePullModel() {
       queryClient.invalidateQueries({ queryKey: ["chat", "models"] });
       queryClient.invalidateQueries({ queryKey: ["chat", "models", "all"] });
       queryClient.invalidateQueries({ queryKey: ["chat", "embedding-models"] });
+      queryClient.invalidateQueries({ queryKey: ["system", "storage"] });
     },
   });
 }
@@ -568,6 +572,7 @@ export function useDeleteModel() {
       queryClient.invalidateQueries({ queryKey: ["chat", "models"] });
       queryClient.invalidateQueries({ queryKey: ["chat", "models", "all"] });
       queryClient.invalidateQueries({ queryKey: ["chat", "embedding-models"] });
+      queryClient.invalidateQueries({ queryKey: ["system", "storage"] });
     },
   });
 }
@@ -635,6 +640,7 @@ export function useDeleteFile() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["chat", "files"] });
+      queryClient.invalidateQueries({ queryKey: ["system", "storage"] });
     },
   });
 }

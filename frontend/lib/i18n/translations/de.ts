@@ -88,6 +88,7 @@ const de: Translations = {
   "settings.storage.systemModels": "Systemmodelle (Embedding)",
   "settings.storage.uploadedFiles": "Hochgeladene Dateien",
   "settings.storage.vectorEmbeddings": "Vektor-Embeddings",
+  "settings.storage.whisperModels": "Whisper-Modelle (Sprache)",
   "settings.storage.chatHistory": "Chat-Verlauf",
   "settings.storage.uploadLimits": "Upload-Limits",
   "settings.storage.maxFileSize": "Max. Dateigröße",

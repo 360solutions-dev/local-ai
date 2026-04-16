@@ -1,3 +1,5 @@
+import os
+
 from django.db import migrations
 
 
@@ -8,7 +10,7 @@ def seed_ollama(apps, schema_editor):
             name="Ollama",
             icon="\U0001F9E0",
             description="Local model inference with Ollama. Runs on your machine with full privacy.",
-            endpoint="http://localhost:11434",
+            endpoint=os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434"),
             type="ollama",
             is_default=True,
             is_connected=False,

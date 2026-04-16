@@ -2,7 +2,7 @@
 import os
 
 # Ollama
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_BASE_URL = os.environ["OLLAMA_BASE_URL"]
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "nomic-embed-text")
 LLM_MODEL = "llama3.1:8b"
 

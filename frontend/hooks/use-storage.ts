@@ -15,6 +15,7 @@ interface StorageBreakdown {
   uploaded_files: number;
   vector_embeddings: number;
   chat_history: number;
+  whisper_models: number;
 }
 
 export interface StorageInfo {
@@ -32,6 +33,7 @@ export function useStorageInfo() {
       return res.data;
     },
     refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -85,6 +87,7 @@ export function useDockerUsage() {
       return res.data;
     },
     refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
 }
 

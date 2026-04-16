@@ -18,11 +18,11 @@ from .serializers import CreateConversationSerializer, RenameConversationSeriali
 logger = logging.getLogger(__name__)
 
 # RAG service URL (runs in a separate Docker container)
-RAG_SERVICE_URL = os.environ.get("RAG_SERVICE_URL", "http://localhost:8080")
+RAG_SERVICE_URL = os.environ["RAG_SERVICE_URL"]
 RAG_API_KEY = os.environ.get("RAG_API_KEY", "")
 
 # Whisper speech-to-text service (separate Docker container)
-WHISPER_SERVICE_URL = os.environ.get("WHISPER_SERVICE_URL", "http://localhost:8090")
+WHISPER_SERVICE_URL = os.environ["WHISPER_SERVICE_URL"]
 WHISPER_API_KEY = os.environ.get("WHISPER_API_KEY", "")
 # 10 MB cap on uploaded audio — enough for ~10 minutes of opus, well beyond
 # any reasonable chat-input voice clip.

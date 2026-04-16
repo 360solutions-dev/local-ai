@@ -30,7 +30,7 @@ from .serializers import (
 
 logger = logging.getLogger(__name__)
 
-RAG_SERVICE_URL = os.environ.get("RAG_SERVICE_URL", "http://localhost:8080")
+RAG_SERVICE_URL = os.environ["RAG_SERVICE_URL"]
 RAG_API_KEY = os.environ.get("RAG_API_KEY", "")
 
 
@@ -70,6 +70,7 @@ class StorageInfoView(APIView):
             "uploaded_files": 0,
             "vector_embeddings": 0,
             "chat_history": 0,
+            "whisper_models": 0,
         }
 
         # 1. Host disk usage (container sees the host filesystem)
@@ -86,7 +87,7 @@ class StorageInfoView(APIView):
         #    shouldn't count as a user-downloaded model.
         SYSTEM_MODELS = {"nomic-embed-text"}
         try:
-            ollama_url = os.environ.get("OLLAMA_HOST", "http://ollama:11434")
+            ollama_url = os.environ.get("OLLAMA_BASE_URL", os.environ.get("OLLAMA_HOST", ""))
             resp = http_requests.get(
                 f"{ollama_url.rstrip('/')}/api/tags", timeout=5
             )
@@ -166,6 +167,22 @@ class StorageInfoView(APIView):
                         breakdown["chat_history"] = cursor.fetchone()[0]
         except Exception as e:
             logger.warning("Failed to fetch chat history size: %s", e)
+
+        # 5. Whisper speech-to-text models
+        try:
+            whisper_url = os.environ.get("WHISPER_SERVICE_URL", "http://localhost:8090")
+            parsed = urlparse(whisper_url)
+            hostname = parsed.hostname or ""
+            port = parsed.port or 80
+            docker_map = {("localhost", 8090): "whisper", ("127.0.0.1", 8090): "whisper"}
+            if (hostname, port) in docker_map:
+                whisper_url = f"{parsed.scheme}://{docker_map[(hostname, port)]}:{port}"
+            resp = http_requests.get(f"{whisper_url.rstrip('/')}/models", timeout=5)
+            resp.raise_for_status()
+            whisper_models = resp.json().get("models", [])
+            breakdown["whisper_models"] = sum(m.get("size", 0) for m in whisper_models)
+        except Exception as e:
+            logger.warning("Failed to fetch Whisper model sizes: %s", e)
 
         total_used = sum(breakdown.values())
 
@@ -697,7 +714,7 @@ class ProviderTestView(APIView):
 class _WhisperBase(APIView):
     """Shared helpers for all Whisper-related views."""
 
-    _WHISPER_URL = os.environ.get("WHISPER_SERVICE_URL", "http://localhost:8090")
+    _WHISPER_URL = os.environ["WHISPER_SERVICE_URL"]
     _API_KEY = os.environ.get("WHISPER_API_KEY", "")
 
     _DOCKER_HOST_MAP = {
@@ -885,7 +902,59 @@ class FactoryResetView(APIView):
         except Exception as e:
             logger.warning("RAG reset failed during factory reset: %s", e)
 
-        # 5. Delete all users
+        # 5. Delete all Ollama models (including nomic-embed-text)
+        try:
+            ollama_url = os.environ.get(
+                "OLLAMA_BASE_URL", os.environ.get("OLLAMA_HOST", "")
+            )
+            resp = http_requests.get(
+                f"{ollama_url.rstrip('/')}/api/tags", timeout=10
+            )
+            resp.raise_for_status()
+            for m in resp.json().get("models", []):
+                name = m.get("name", "")
+                if name:
+                    try:
+                        http_requests.delete(
+                            f"{ollama_url.rstrip('/')}/api/delete",
+                            json={"name": name},
+                            timeout=30,
+                        )
+                    except Exception:
+                        logger.warning("Failed to delete Ollama model %s", name)
+        except Exception as e:
+            logger.warning("Failed to list/delete Ollama models during factory reset: %s", e)
+
+        # 6. Delete all Whisper models
+        try:
+            whisper_url = os.environ.get("WHISPER_SERVICE_URL", "http://localhost:8090")
+            parsed = urlparse(whisper_url)
+            hostname = parsed.hostname or ""
+            port = parsed.port or 80
+            docker_map = {("localhost", 8090): "whisper", ("127.0.0.1", 8090): "whisper"}
+            if (hostname, port) in docker_map:
+                whisper_url = f"{parsed.scheme}://{docker_map[(hostname, port)]}:{port}"
+            whisper_api_key = os.environ.get("WHISPER_API_KEY", "")
+            w_headers = {"X-API-Key": whisper_api_key} if whisper_api_key else {}
+            resp = http_requests.get(
+                f"{whisper_url.rstrip('/')}/models", headers=w_headers, timeout=10
+            )
+            resp.raise_for_status()
+            for m in resp.json().get("models", []):
+                name = m.get("name", "")
+                if name:
+                    try:
+                        http_requests.delete(
+                            f"{whisper_url.rstrip('/')}/models/{name}",
+                            headers=w_headers,
+                            timeout=30,
+                        )
+                    except Exception:
+                        logger.warning("Failed to delete Whisper model %s", name)
+        except Exception as e:
+            logger.warning("Failed to list/delete Whisper models during factory reset: %s", e)
+
+        # 7. Delete all users
         User = get_user_model()
         User.objects.all().delete()
 

@@ -88,6 +88,7 @@ const zh: Translations = {
   "settings.storage.systemModels": "系统模型（Embedding）",
   "settings.storage.uploadedFiles": "上传的文件",
   "settings.storage.vectorEmbeddings": "向量嵌入",
+  "settings.storage.whisperModels": "Whisper模型（语音）",
   "settings.storage.chatHistory": "聊天记录",
   "settings.storage.uploadLimits": "文件上传限制",
   "settings.storage.maxFileSize": "最大文件大小",

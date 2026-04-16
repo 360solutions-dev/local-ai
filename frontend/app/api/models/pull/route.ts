@@ -3,7 +3,7 @@
  * This bypasses the rewrite proxy which buffers entire responses.
  */
 
-const RAG_URL = process.env.RAG_URL || "http://localhost:8080";
+const RAG_URL = process.env.RAG_URL!;
 const RAG_API_KEY = process.env.RAG_API_KEY || "";
 
 export async function POST(request: Request) {

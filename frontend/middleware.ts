@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 const protectedRoutes = ["/dashboard", "/chat", "/settings", "/model-engines"];
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
+const BACKEND_URL = process.env.BACKEND_URL!;
 
 async function checkSetupStatus(): Promise<boolean | null> {
   try {

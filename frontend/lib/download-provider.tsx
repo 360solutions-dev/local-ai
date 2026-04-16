@@ -120,6 +120,7 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
         queryClient.invalidateQueries({ queryKey: ["chat", "models"] });
         queryClient.invalidateQueries({ queryKey: ["chat", "models", "all"] });
         queryClient.invalidateQueries({ queryKey: ["chat", "embedding-models"] });
+        queryClient.invalidateQueries({ queryKey: ["system", "storage"] });
 
         // Keep "Complete!" visible briefly
         setTimeout(() => {
@@ -231,6 +232,7 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
         }));
         queryClient.invalidateQueries({ queryKey: ["system", "whisper-models"] });
         queryClient.invalidateQueries({ queryKey: ["system", "whisper-health"] });
+        queryClient.invalidateQueries({ queryKey: ["system", "storage"] });
 
         setTimeout(() => {
           setWhisperDownload(null);

@@ -88,6 +88,7 @@ const ja: Translations = {
   "settings.storage.systemModels": "システムモデル（Embedding）",
   "settings.storage.uploadedFiles": "アップロードされたファイル",
   "settings.storage.vectorEmbeddings": "ベクトルエンベディング",
+  "settings.storage.whisperModels": "Whisperモデル（音声）",
   "settings.storage.chatHistory": "チャット履歴",
   "settings.storage.uploadLimits": "アップロード制限",
   "settings.storage.maxFileSize": "最大ファイルサイズ",

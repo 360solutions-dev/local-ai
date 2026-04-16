@@ -73,9 +73,9 @@ services:
       DJANGO_DEBUG: ${DJANGO_DEBUG}
       ALLOWED_HOSTS: localhost,127.0.0.1,django,api.local-ai.localhost
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
-      RAG_SERVICE_URL: http://rag:8080
+      RAG_SERVICE_URL: ${RAG_SERVICE_URL}
       RAG_API_KEY: ${RAG_API_KEY}
-      WHISPER_SERVICE_URL: http://whisper:8090
+      WHISPER_SERVICE_URL: ${WHISPER_SERVICE_URL}
       WHISPER_API_KEY: ${WHISPER_API_KEY}
     volumes:
       - ./backend:/app
@@ -105,8 +105,8 @@ services:
     # which causes Turbopack EACCES on .next/dev mkdir for the image's appuser).
     user: "0"
     environment:
-      BACKEND_URL: http://django:8000
-      RAG_URL: http://rag:8080
+      BACKEND_URL: ${BACKEND_URL}
+      RAG_URL: ${RAG_URL}
       RAG_API_KEY: ${RAG_API_KEY}
     volumes:
       - ./frontend:/app
@@ -130,7 +130,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
       RAG_API_KEY: ${RAG_API_KEY}
     ports:
       - "8501:8501"

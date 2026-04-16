@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
-const backendUrl = process.env.BACKEND_URL || "http://localhost:8000";
-const ragUrl = process.env.RAG_URL || "http://localhost:8080";
+const backendUrl = process.env.BACKEND_URL!;
+const ragUrl = process.env.RAG_URL!;
 
 const nextConfig: NextConfig = {
   skipTrailingSlashRedirect: true,

@@ -29,7 +29,7 @@ def verify_api_key(x_api_key: str = Header(default="", alias="X-API-Key")):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
     return x_api_key
 
-_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+_origins = os.environ.get("CORS_ORIGINS", "")
 _origins_list = [o.strip() for o in _origins.split(",") if o.strip()]
 
 app.add_middleware(
