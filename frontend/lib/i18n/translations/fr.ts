@@ -289,9 +289,6 @@ const fr: Translations = {
   "modelEngines.invalidModelName": "Format invalide. Utilisez : model, model:tag ou namespace/model:tag",
   "modelEngines.modelNotFound": "Modèle introuvable dans la bibliothèque Ollama. Parcourir les modèles sur ollama.com/library",
   "modelEngines.modelAlreadyExists": "Ce modèle est déjà téléchargé.",
-  "modelEngines.whisperService": "Whisper",
-  "modelEngines.whisperDescription": "Service local de reconnaissance vocale avec faster-whisper.",
-  "modelEngines.whisperType": "Voix en texte",
   "modelEngines.validating": "Vérification...",
   "modelEngines.connectProvider": "Connecter un fournisseur",
   "modelEngines.connectProviderDesc": "Entrez les détails de connexion pour ce fournisseur.",
@@ -381,6 +378,7 @@ const fr: Translations = {
   "chat.dropFiles": "Déposez des fichiers ici ou cliquez pour télécharger",
   "chat.supportedFormats": ".pdf, .docx, .xlsx, .csv, .txt, .md",
   "chat.indexedFiles": "Fichiers indexés ({count})",
+  "chat.chatModelSubtitle": "Ollama",
   "chat.indexed": "Indexé",
   "chat.you": "Vous",
   "chat.copy": "Copier",
@@ -398,9 +396,16 @@ const fr: Translations = {
   "chat.micPermissionDenied": "Accès au microphone refusé. Autorisez l'accès dans les paramètres du navigateur.",
   "chat.voiceNotSupported": "L'entrée vocale n'est pas prise en charge par ce navigateur.",
   "chat.voiceError": "Impossible de transcrire l'audio. Veuillez réessayer.",
-  "chat.whisperDisconnected": "Whisper non connecté",
-  "chat.whisperDisconnectedDesc": "Connectez le service Whisper depuis la page Model Engines pour utiliser la saisie vocale.",
   "chat.voiceNoSpeech": "Aucune parole détectée. Veuillez réessayer.",
+
+  "chat.embeddingModalTitle": "Modèle d’embedding requis",
+  "chat.embeddingModalDesc":
+    "L’indexation des PDF nécessite un modèle d’embedding dans Ollama. Choisissez-en un pour le chat avec fichiers ou téléchargez-le s’il manque. Il sera enregistré dans Moteurs de modèles.",
+  "chat.embeddingInstalled": "Installé localement",
+  "chat.embeddingWillDownload": "Sera téléchargé depuis Ollama",
+  "chat.embeddingPreparing": "Préparation du modèle…",
+  "chat.embeddingContinue": "Continuer et indexer le PDF",
+  "chat.embeddingBytesProgress": "{done} / {total} ({remaining} restants)",
 };
 
 export default fr;

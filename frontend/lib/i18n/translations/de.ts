@@ -289,9 +289,6 @@ const de: Translations = {
   "modelEngines.invalidModelName": "Ungültiges Format. Verwenden Sie: model, model:tag oder namespace/model:tag",
   "modelEngines.modelNotFound": "Modell nicht in der Ollama-Bibliothek gefunden. Modelle unter ollama.com/library durchsuchen",
   "modelEngines.modelAlreadyExists": "Dieses Modell ist bereits heruntergeladen.",
-  "modelEngines.whisperService": "Whisper",
-  "modelEngines.whisperDescription": "Lokaler Sprache-zu-Text-Dienst mit faster-whisper.",
-  "modelEngines.whisperType": "Sprache-zu-Text",
   "modelEngines.validating": "Wird überprüft...",
   "modelEngines.connectProvider": "Anbieter verbinden",
   "modelEngines.connectProviderDesc": "Geben Sie die Verbindungsdetails für diesen Anbieter ein.",
@@ -381,6 +378,7 @@ const de: Translations = {
   "chat.dropFiles": "Dateien hierher ziehen oder klicken zum Hochladen",
   "chat.supportedFormats": ".pdf, .docx, .xlsx, .csv, .txt, .md",
   "chat.indexedFiles": "Indexierte Dateien ({count})",
+  "chat.chatModelSubtitle": "Ollama",
   "chat.indexed": "Indexiert",
   "chat.you": "Sie",
   "chat.copy": "Kopieren",
@@ -398,9 +396,16 @@ const de: Translations = {
   "chat.micPermissionDenied": "Mikrofonzugriff verweigert. Erlauben Sie den Zugriff in den Browsereinstellungen.",
   "chat.voiceNotSupported": "Spracheingabe wird in diesem Browser nicht unterstützt.",
   "chat.voiceError": "Audio konnte nicht transkribiert werden. Bitte erneut versuchen.",
-  "chat.whisperDisconnected": "Whisper nicht verbunden",
-  "chat.whisperDisconnectedDesc": "Verbinden Sie den Whisper-Dienst auf der Modell-Engines-Seite, um die Spracheingabe zu nutzen.",
   "chat.voiceNoSpeech": "Keine Sprache erkannt. Bitte erneut versuchen.",
+
+  "chat.embeddingModalTitle": "Embedding-Modell erforderlich",
+  "chat.embeddingModalDesc":
+    "Für die PDF-Indexierung wird ein Embedding-Modell in Ollama benötigt. Wählen Sie eines für den Datei-Chat oder laden Sie es herunter. Es wird unter Modell-Engines gespeichert.",
+  "chat.embeddingInstalled": "Lokal installiert",
+  "chat.embeddingWillDownload": "Wird von Ollama heruntergeladen",
+  "chat.embeddingPreparing": "Modell wird vorbereitet…",
+  "chat.embeddingContinue": "Weiter & PDF indexieren",
+  "chat.embeddingBytesProgress": "{done} / {total} ({remaining} verbleibend)",
 };
 
 export default de;

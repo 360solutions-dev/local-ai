@@ -34,6 +34,16 @@ urlpatterns = [
         name="chat-models",
     ),
     path(
+        "models/all/",
+        views.ModelListAllView.as_view(),
+        name="chat-models-all",
+    ),
+    path(
+        "embedding-models/",
+        views.EmbeddingModelsStatusView.as_view(),
+        name="chat-embedding-models",
+    ),
+    path(
         "models/pull/",
         views.ModelPullView.as_view(),
         name="chat-model-pull",

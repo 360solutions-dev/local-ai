@@ -115,6 +115,8 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
           status: "Complete!",
         }));
         queryClient.invalidateQueries({ queryKey: ["chat", "models"] });
+        queryClient.invalidateQueries({ queryKey: ["chat", "models", "all"] });
+        queryClient.invalidateQueries({ queryKey: ["chat", "embedding-models"] });
 
         // Keep "Complete!" visible briefly
         setTimeout(() => {

@@ -13,7 +13,7 @@ import json
 import tempfile
 import uuid
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel as PydanticModel
 
@@ -109,6 +109,33 @@ def list_models():
                     "id": name,
                     "name": name,
                     "size": f"{size_gb} GB",
+                    "modified": m.get("modified_at", ""),
+                })
+            return {"models": models}
+    except Exception as e:
+        return {"models": [], "error": str(e)}
+
+
+@app.get("/api/models/all", dependencies=[Depends(verify_api_key)])
+def list_all_models():
+    """List every model in Ollama (including embedding models) for admin UI."""
+    try:
+        import urllib.request
+
+        from config import OLLAMA_BASE_URL
+
+        url = f"{OLLAMA_BASE_URL.rstrip('/')}/api/tags"
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            data = json.loads(resp.read())
+            models = []
+            for m in data.get("models", []):
+                name = m.get("name", "")
+                size_bytes = m.get("size", 0)
+                size_gb = round(size_bytes / (1024 ** 3), 2) if size_bytes else 0
+                models.append({
+                    "id": name,
+                    "name": name,
+                    "size": f"{size_gb} GB" if size_gb >= 0.01 else f"{round(size_bytes / (1024 ** 2))} MB",
                     "modified": m.get("modified_at", ""),
                 })
             return {"models": models}
@@ -325,9 +352,15 @@ def _ensure_files_table():
 # ---------------------------------------------------------------------------
 
 @app.post("/api/files/upload", dependencies=[Depends(verify_api_key)])
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    embedding_model: str = Form(""),
+):
     """Upload a document, process it, and add to the vector index."""
-    from config import EMBEDDING_MODEL, OLLAMA_BASE_URL, PERSIST_DIRECTORY
+    from config import EMBEDDING_MODEL as DEFAULT_EMBEDDING
+    from config import OLLAMA_BASE_URL, PERSIST_DIRECTORY
+
+    effective_embedding = (embedding_model or "").strip() or DEFAULT_EMBEDDING
     from document_loader import DocumentProcessor
     from vector_store import VectorStoreManager
 
@@ -375,7 +408,7 @@ async def upload_file(file: UploadFile = File(...)):
         from langchain_community.vectorstores import FAISS
         from langchain_ollama import OllamaEmbeddings
 
-        embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL, base_url=OLLAMA_BASE_URL)
+        embeddings = OllamaEmbeddings(model=effective_embedding, base_url=OLLAMA_BASE_URL)
 
         if store_path.exists() and (store_path / "index.faiss").exists():
             existing_vs = FAISS.load_local(
@@ -403,6 +436,11 @@ async def upload_file(file: UploadFile = File(...)):
 
         # Invalidate cached index so next /api/ask reloads with new documents
         invalidate_index_cache()
+
+        # Keep module-level embedding in sync so /api/ask loads the index with the same model.
+        import config as rag_config
+
+        rag_config.EMBEDDING_MODEL = effective_embedding
 
         return {"file": file_meta}
 

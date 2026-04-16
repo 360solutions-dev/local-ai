@@ -289,9 +289,6 @@ const zh: Translations = {
   "modelEngines.invalidModelName": "格式无效。格式：model、model:tag 或 namespace/model:tag",
   "modelEngines.modelNotFound": "在 Ollama 库中未找到该模型。请访问 ollama.com/library 浏览模型",
   "modelEngines.modelAlreadyExists": "该模型已下载。",
-  "modelEngines.whisperService": "Whisper",
-  "modelEngines.whisperDescription": "基于faster-whisper的本地语音转文字服务。",
-  "modelEngines.whisperType": "语音转文字",
   "modelEngines.validating": "验证中...",
   "modelEngines.connectProvider": "连接提供者",
   "modelEngines.connectProviderDesc": "输入此提供者的连接详情。",
@@ -381,6 +378,7 @@ const zh: Translations = {
   "chat.dropFiles": "拖拽文件到此处或点击上传",
   "chat.supportedFormats": ".pdf, .docx, .xlsx, .csv, .txt, .md",
   "chat.indexedFiles": "已索引文件（{count}）",
+  "chat.chatModelSubtitle": "Ollama",
   "chat.indexed": "已索引",
   "chat.you": "你",
   "chat.copy": "复制",
@@ -398,9 +396,16 @@ const zh: Translations = {
   "chat.micPermissionDenied": "麦克风权限被拒绝。请在浏览器设置中允许访问。",
   "chat.voiceNotSupported": "此浏览器不支持语音输入。",
   "chat.voiceError": "无法转录音频。请重试。",
-  "chat.whisperDisconnected": "Whisper未连接",
-  "chat.whisperDisconnectedDesc": "请从模型引擎页面连接Whisper服务以使用语音输入。",
   "chat.voiceNoSpeech": "未检测到语音。请重试。",
+
+  "chat.embeddingModalTitle": "需要嵌入模型",
+  "chat.embeddingModalDesc":
+    "PDF 索引需要 Ollama 中的嵌入模型。请为文件聊天选择一个；若未安装将先下载。将保存在模型引擎中。",
+  "chat.embeddingInstalled": "已在本地安装",
+  "chat.embeddingWillDownload": "将从 Ollama 下载",
+  "chat.embeddingPreparing": "正在准备模型…",
+  "chat.embeddingContinue": "继续并索引 PDF",
+  "chat.embeddingBytesProgress": "{done} / {total}（剩余 {remaining}）",
 };
 
 export default zh;

@@ -28,15 +28,9 @@ class ProviderSerializer(serializers.ModelSerializer):
 
 
 class ModelConfigSerializer(serializers.ModelSerializer):
-    chat_provider_id = serializers.UUIDField(
-        source="chat_provider_id", required=False, allow_null=True
-    )
-    embedding_provider_id = serializers.UUIDField(
-        source="embedding_provider_id", required=False, allow_null=True
-    )
-    tts_provider_id = serializers.UUIDField(
-        source="tts_provider_id", required=False, allow_null=True
-    )
+    chat_provider_id = serializers.UUIDField(required=False, allow_null=True)
+    embedding_provider_id = serializers.UUIDField(required=False, allow_null=True)
+    tts_provider_id = serializers.UUIDField(required=False, allow_null=True)
 
     # Read-only: provider name + endpoint for the frontend
     chat_provider_name = serializers.CharField(

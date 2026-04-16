@@ -346,30 +346,6 @@ export function useSystemHealth() {
 }
 
 // ---------------------------------------------------------------------------
-// Whisper service health hook
-// ---------------------------------------------------------------------------
-
-export interface WhisperHealth {
-  connected: boolean;
-  model: string;
-  endpoint: string;
-  latency_ms?: number;
-}
-
-export function useWhisperHealth() {
-  return useQuery({
-    queryKey: ["system", "whisper-health"],
-    queryFn: async () => {
-      const res = await apiGet<WhisperHealth>("/api/system/services/whisper/health/");
-      if (!res.ok) return { connected: false, model: "", endpoint: "" } as WhisperHealth;
-      return res.data;
-    },
-    refetchInterval: 15_000,
-  });
-}
-
-
-// ---------------------------------------------------------------------------
 // Provider connection test hook
 // ---------------------------------------------------------------------------
 
@@ -414,6 +390,48 @@ export function useOllamaModels() {
   });
 }
 
+/** All Ollama models including embeddings (Model Engines → Downloaded Models). */
+export function useOllamaAllModels() {
+  return useQuery({
+    queryKey: ["chat", "models", "all"],
+    queryFn: async () => {
+      const res = await apiGet<{ models: OllamaModel[] }>("/api/chat/models/all/");
+      if (!res.ok) return [];
+      return res.data.models;
+    },
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export interface EmbeddingModelsStatus {
+  configured_embedding_model: string;
+  installed: boolean;
+  installed_embedding_models: { name: string; size: string }[];
+  recommended: string[];
+  error?: string;
+}
+
+export function useEmbeddingModelsStatus(enabled = true) {
+  return useQuery({
+    queryKey: ["chat", "embedding-models"],
+    queryFn: async () => {
+      const res = await apiGet<EmbeddingModelsStatus>("/api/chat/embedding-models/");
+      if (!res.ok) {
+        return {
+          configured_embedding_model: "nomic-embed-text",
+          installed: false,
+          installed_embedding_models: [],
+          recommended: [],
+        } satisfies EmbeddingModelsStatus;
+      }
+      return res.data;
+    },
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
 export function usePullModel() {
   const queryClient = useQueryClient();
 
@@ -436,6 +454,8 @@ export function usePullModel() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["chat", "models"] });
+      queryClient.invalidateQueries({ queryKey: ["chat", "models", "all"] });
+      queryClient.invalidateQueries({ queryKey: ["chat", "embedding-models"] });
     },
   });
 }
@@ -456,6 +476,8 @@ export function useDeleteModel() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["chat", "models"] });
+      queryClient.invalidateQueries({ queryKey: ["chat", "models", "all"] });
+      queryClient.invalidateQueries({ queryKey: ["chat", "embedding-models"] });
     },
   });
 }
@@ -766,8 +788,10 @@ export function useUpdateModelConfig() {
       }
       return res.data.config;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      queryClient.setQueryData(["system", "model-config"], data);
       queryClient.invalidateQueries({ queryKey: ["system", "model-config"] });
+      queryClient.invalidateQueries({ queryKey: ["chat", "embedding-models"] });
     },
   });
 }

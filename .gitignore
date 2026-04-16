@@ -17,6 +17,9 @@ node_modules/
 # Runtime data
 vector_db/
 
+# Packaged offline bundles (see scripts/package-offline-bundle.sh)
+dist/
+
 # OS
 .DS_Store
 Thumbs.db

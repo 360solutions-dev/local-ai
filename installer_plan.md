@@ -31,7 +31,7 @@ Script runs locally on user's machine:
         ├── 4. Run docker compose up -d
         ├── 5. Run database migrations
         ├── 6. Pull Ollama LLM models
-        └── 7. Open http://localhost:3000
+        └── 7. Open http://local-ai.localhost (Caddy; add hosts entries) or publish Next.js on 3000 for dev
 ```
 
 ---
@@ -95,9 +95,9 @@ docker compose exec ollama ollama pull nomic-embed-text    # 274 MB
 ### Step 7: Done
 
 ```bash
-# Print success + open browser
-open http://localhost:3000   # macOS
-xdg-open http://localhost:3000   # Linux
+# Print success + open browser (Caddy front door; ensure hosts file has local-ai.localhost)
+open http://local-ai.localhost   # macOS
+xdg-open http://local-ai.localhost   # Linux
 ```
 
 ---
@@ -134,7 +134,7 @@ $ curl -sSL https://get.local-ai.run | bash
   ══════════════════════════════════
   ✅ local-ai is ready!
 
-  Open:    http://localhost:3000
+  Open:    http://local-ai.localhost (see Caddyfile / README)
   Stop:    cd ~/local-ai && docker compose down
   Start:   cd ~/local-ai && docker compose up -d
   Uninstall: cd ~/local-ai && bash scripts/uninstall.sh

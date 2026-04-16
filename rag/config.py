@@ -3,7 +3,7 @@ import os
 
 # Ollama
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-EMBEDDING_MODEL = "nomic-embed-text"
+EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "nomic-embed-text")
 LLM_MODEL = "llama3.1:8b"
 
 # Chunking (nomic-embed-text supports ~2K tokens; ~1000 chars is safe)

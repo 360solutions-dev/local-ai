@@ -5,6 +5,7 @@ import {
   KeyboardEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -24,12 +25,92 @@ import {
   useDeleteFile,
   useOllamaModels,
   useHasActiveProvider,
-  useWhisperHealth,
+  useModelConfig,
+  useUpdateModelConfig,
+  useProviders,
   OPTIMISTIC_PREFIX,
   type ChatMessage,
+  type EmbeddingModelsStatus,
 } from "@/hooks/use-chat";
 import { useQueryClient } from "@tanstack/react-query";
-import { useDownload } from "@/lib/download-provider";
+import { apiGet } from "@/lib/api";
+import { formatBytes } from "@/hooks/use-storage";
+
+/** Same SSE shape as `/api/models/pull` → RAG (see `DownloadProvider`). */
+type EmbeddingPullProgress = {
+  percent: number;
+  completed: number;
+  total: number;
+  status: string;
+};
+
+/** Stream pull until success; invokes `onProgress` with percent and byte counts when available. */
+async function pullOllamaModelStream(
+  name: string,
+  onProgress?: (p: EmbeddingPullProgress) => void,
+): Promise<void> {
+  const resp = await fetch("/api/models/pull", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ name }),
+  });
+  if (!resp.ok) throw new Error(`Pull failed (HTTP ${resp.status})`);
+  const reader = resp.body?.getReader();
+  if (!reader) throw new Error("No response stream");
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const jsonStr = trimmed.startsWith("data: ") ? trimmed.slice(6) : trimmed;
+      try {
+        const data = JSON.parse(jsonStr) as {
+          status?: string;
+          error?: string;
+          percent?: number;
+          total?: number;
+          completed?: number;
+        };
+        if (data.status === "error") {
+          throw new Error(data.error || "Pull failed");
+        }
+        if (data.status === "success") {
+          onProgress?.({
+            percent: data.percent ?? 100,
+            completed: 0,
+            total: 0,
+            status: data.status,
+          });
+          continue;
+        }
+        onProgress?.({
+          percent: data.percent ?? 0,
+          completed: data.completed ?? 0,
+          total: data.total ?? 0,
+          status: typeof data.status === "string" ? data.status : "",
+        });
+      } catch (parseErr) {
+        if (
+          parseErr instanceof Error &&
+          (parseErr.message === "Pull failed" || parseErr.message.startsWith("Pull failed"))
+        ) {
+          throw parseErr;
+        }
+      }
+    }
+  }
+}
+
+function modelNameBase(name: string): string {
+  return name.split(":")[0].trim().toLowerCase();
+}
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
@@ -85,7 +166,6 @@ export default function ChatClient() {
   const { t, locale } = useTranslation();
   const [filePanelOpen, setFilePanelOpen] = useState(true);
   const [voiceOpen, setVoiceOpen] = useState(false);
-  const [whisperAlert, setWhisperAlert] = useState(false);
   const [activeChatId, setActiveChatId] = useState<number | null>(null);
   const [modelOverlayOpen, setModelOverlayOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>("");
@@ -122,12 +202,104 @@ export default function ChatClient() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: ollamaModels = [], isLoading: modelsLoading } = useOllamaModels();
   const { active: hasActiveProvider, isLoading: providerLoading } = useHasActiveProvider();
-  const { data: whisperHealth } = useWhisperHealth();
-  const { download, isPulling, startPull } = useDownload();
-  const [showPullModal, setShowPullModal] = useState(false);
-  const [pullInput, setPullInput] = useState("");
-  const [pullError, setPullError] = useState<string | null>(null);
-  const [isValidating, setIsValidating] = useState(false);
+  const { data: modelConfig } = useModelConfig();
+  const updateModelConfig = useUpdateModelConfig();
+  const { data: providers = [] } = useProviders();
+
+  const [embeddingModalOpen, setEmbeddingModalOpen] = useState(false);
+  const [pendingPdfFile, setPendingPdfFile] = useState<File | null>(null);
+  const [embeddingChoice, setEmbeddingChoice] = useState("nomic-embed-text");
+  const [embeddingModalError, setEmbeddingModalError] = useState<string | null>(null);
+  const [embeddingBusy, setEmbeddingBusy] = useState(false);
+  const [embeddingPullProgress, setEmbeddingPullProgress] = useState<EmbeddingPullProgress | null>(
+    null,
+  );
+  const [embeddingStatusSnapshot, setEmbeddingStatusSnapshot] =
+    useState<EmbeddingModelsStatus | null>(null);
+
+  const processFileForUpload = useCallback(
+    async (file: File) => {
+      if (!file.name.toLowerCase().endsWith(".pdf")) {
+        uploadFile.mutate(file);
+        return;
+      }
+      const res = await apiGet<EmbeddingModelsStatus>("/api/chat/embedding-models/");
+      if (!res.ok || !res.data) {
+        uploadFile.mutate(file);
+        return;
+      }
+      if (res.data.installed) {
+        uploadFile.mutate(file);
+        return;
+      }
+      setEmbeddingStatusSnapshot(res.data);
+      const fallback =
+        res.data.recommended[0] || res.data.configured_embedding_model || "nomic-embed-text";
+      const initial =
+        (modelConfig?.embedding_model || "").trim() || res.data.configured_embedding_model || fallback;
+      setEmbeddingChoice(modelNameBase(initial));
+      setEmbeddingModalError(null);
+      setPendingPdfFile(file);
+      setEmbeddingModalOpen(true);
+    },
+    [modelConfig?.embedding_model, uploadFile],
+  );
+
+  const embeddingChoices = useMemo(() => {
+    const s = embeddingStatusSnapshot;
+    if (!s) return [];
+    const seen = new Set<string>();
+    const out: { label: string; value: string; installed: boolean }[] = [];
+    for (const m of s.installed_embedding_models) {
+      const b = modelNameBase(m.name);
+      if (seen.has(b)) continue;
+      seen.add(b);
+      out.push({ label: m.name, value: b, installed: true });
+    }
+    for (const r of s.recommended) {
+      const b = modelNameBase(r);
+      if (seen.has(b)) continue;
+      seen.add(b);
+      out.push({ label: r, value: b, installed: false });
+    }
+    return out;
+  }, [embeddingStatusSnapshot]);
+
+  const handleEmbeddingModalContinue = async () => {
+    if (!pendingPdfFile) return;
+    setEmbeddingModalError(null);
+    setEmbeddingBusy(true);
+    try {
+      const status = embeddingStatusSnapshot;
+      const base = embeddingChoice.trim().toLowerCase();
+      const installedBases = new Set(
+        (status?.installed_embedding_models ?? []).map((m) => modelNameBase(m.name)),
+      );
+      if (!installedBases.has(base)) {
+        setEmbeddingPullProgress({ percent: 0, completed: 0, total: 0, status: "" });
+        await pullOllamaModelStream(base, (p) => setEmbeddingPullProgress(p));
+        setEmbeddingPullProgress(null);
+        await queryClient.invalidateQueries({ queryKey: ["chat", "models"] });
+        await queryClient.invalidateQueries({ queryKey: ["chat", "models", "all"] });
+        await queryClient.invalidateQueries({ queryKey: ["chat", "embedding-models"] });
+      }
+      const ollamaProvider = providers.find((p) => p.name === "Ollama");
+      await updateModelConfig.mutateAsync({
+        embedding_model: base,
+        embedding_provider_id: ollamaProvider?.id ?? null,
+      });
+      const file = pendingPdfFile;
+      setEmbeddingModalOpen(false);
+      setPendingPdfFile(null);
+      setEmbeddingStatusSnapshot(null);
+      uploadFile.mutate(file);
+    } catch (err) {
+      setEmbeddingModalError(err instanceof Error ? err.message : "Failed to prepare embedding model.");
+    } finally {
+      setEmbeddingPullProgress(null);
+      setEmbeddingBusy(false);
+    }
+  };
 
   // `isSwitchingRef` is set to true just before `setActiveChatId` inside
   // handleSend so the ambient chat-switch cleanup effect doesn't nuke the
@@ -204,56 +376,6 @@ export default function ChatClient() {
   const mentionFiles = indexedFiles.filter((f) =>
     f.name.toLowerCase().includes(fileMentionQuery),
   );
-
-  function validateModelName(name: string): string | null {
-    if (!name) return t("modelEngines.modelNameRequired");
-    if (name.length > 200) return t("modelEngines.modelNameTooLong");
-    const pattern = /^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?(\/[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?)?(:[a-zA-Z0-9][a-zA-Z0-9._-]*)?$/;
-    if (!pattern.test(name)) return t("modelEngines.invalidModelName");
-    return null;
-  }
-
-  async function handlePullModel() {
-    const name = pullInput.trim();
-    if (!name || isPulling || isValidating) return;
-
-    const error = validateModelName(name);
-    if (error) {
-      setPullError(error);
-      return;
-    }
-
-    const nameWithTag = name.includes(":") ? name : `${name}:latest`;
-    const nameWithoutTag = name.split(":")[0];
-    const alreadyExists = ollamaModels.some(
-      (m) => m.name === name || m.name === nameWithTag || m.name === nameWithoutTag || m.name.split(":")[0] === nameWithoutTag,
-    );
-    if (alreadyExists) {
-      setPullError(t("modelEngines.modelAlreadyExists"));
-      return;
-    }
-
-    setIsValidating(true);
-    setPullError(null);
-    try {
-      const res = await fetch(`/api/models/validate?name=${encodeURIComponent(name)}`);
-      if (!res.ok) throw new Error(`Validation failed: HTTP ${res.status}`);
-      const data = await res.json();
-      if (!data.valid) {
-        setPullError(data.error || t("modelEngines.modelNotFound"));
-        return;
-      }
-    } catch {
-      // If validation endpoint is unreachable, proceed anyway
-    } finally {
-      setIsValidating(false);
-    }
-
-    setShowPullModal(false);
-    setPullInput("");
-    setPullError(null);
-    startPull(name);
-  }
 
   async function handleSend(textOverride?: string) {
     // Voice transcription path passes text directly because setInput() is async
@@ -734,7 +856,9 @@ export default function ChatClient() {
           <div className="flex items-center justify-between px-6 py-3 border-b border-border bg-bg-elevated">
             <div className="text-[0.95rem] font-semibold flex items-center gap-2">
               💬 {t("chat.chatWithFiles")}
-              <span className="font-mono text-[0.72rem] text-accent bg-accent/15 px-2 py-0.5 rounded">{selectedModel} · Ollama</span>
+              <span className="font-mono text-[0.72rem] text-accent bg-accent/15 px-2 py-0.5 rounded">
+                {selectedModel}
+              </span>
             </div>
             <div className="flex gap-2">
               <button type="button" className="bg-bg-card border border-border text-text-muted px-3 py-1.5 rounded-md font-mono text-[0.75rem] cursor-pointer transition-all flex items-center gap-1.5 hover:border-accent hover:text-accent" onClick={() => setFilePanelOpen((o) => !o)}>
@@ -842,14 +966,7 @@ export default function ChatClient() {
                   className="w-[34px] h-[34px] rounded-lg border border-border bg-bg-elevated text-text-muted cursor-pointer flex items-center justify-center transition-all hover:border-accent hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed"
                   title={t("chat.voiceInput")}
                   aria-label={t("chat.voiceInput")}
-                  onClick={() => {
-                    const disabled = typeof window !== "undefined" && localStorage.getItem("whisper_disabled") === "true";
-                    if (disabled || !whisperHealth?.connected) {
-                      setWhisperAlert(true);
-                    } else {
-                      setVoiceOpen(true);
-                    }
-                  }}
+                  onClick={() => setVoiceOpen(true)}
                   disabled={isSending}
                 >
                   <Mic size={16} />
@@ -888,19 +1005,59 @@ export default function ChatClient() {
             setInput(text);
           }}
           language={locale}
-          activeModel={whisperHealth?.model || ""}
         />
 
         {/* File Panel */}
         <div className={`w-[300px] bg-bg-elevated border-l border-border flex-col shrink-0 ${filePanelOpen ? "flex" : "hidden"}`}>
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <div className="text-[0.9rem] font-semibold">📁 {t("chat.files")}</div>
-            <button type="button" className="bg-transparent border-none text-text-dim cursor-pointer text-lg px-1.5 py-0.5 rounded transition-colors hover:text-danger" onClick={() => setFilePanelOpen(false)}>✕</button>
+          <div className="flex items-start justify-between gap-2 px-4 py-3 border-b border-border">
+            <div className="flex items-start gap-2 min-w-0 flex-1">
+              <span className="text-[0.9rem] shrink-0 pt-0.5" aria-hidden>
+                📁
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[0.9rem] font-semibold font-mono truncate">
+                    {selectedModel || t("chat.files")}
+                  </span>
+                  {selectedModel ? (
+                    <span className="font-mono text-[0.6rem] text-accent bg-accent/15 px-1.5 py-0.5 rounded shrink-0">
+                      {t("common.active")}
+                    </span>
+                  ) : null}
+                </div>
+                {selectedModel ? (
+                  <div className="text-[0.65rem] font-mono text-text-dim truncate mt-0.5">
+                    {t("chat.chatModelSubtitle")}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="bg-transparent border-none text-text-dim cursor-pointer text-lg px-1.5 py-0.5 rounded transition-colors hover:text-danger shrink-0"
+              onClick={() => setFilePanelOpen(false)}
+            >
+              ✕
+            </button>
           </div>
 
           <div
-            className={`mx-3 mt-3 p-6 border border-dashed border-border rounded-[10px] text-center cursor-pointer transition-all hover:border-accent hover:bg-accent/15 ${uploadFile.isPending ? "opacity-50 pointer-events-none" : ""}`}
+            className={`mx-3 mt-3 p-6 border border-dashed border-border rounded-[10px] text-center cursor-pointer transition-all hover:border-accent hover:bg-accent/15 ${uploadFile.isPending || embeddingBusy ? "opacity-50 pointer-events-none" : ""}`}
             onClick={() => fileInputRef.current?.click()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (uploadFile.isPending || embeddingBusy) return;
+              const fl = e.dataTransfer.files;
+              if (!fl?.length) return;
+              Array.from(fl).forEach((f) => {
+                void processFileForUpload(f);
+              });
+            }}
             role="presentation"
           >
             <div className="text-2xl mb-2">{uploadFile.isPending ? "⏳" : "📤"}</div>
@@ -918,7 +1075,7 @@ export default function ChatClient() {
                 const files = e.target.files;
                 if (!files) return;
                 Array.from(files).forEach((file) => {
-                  uploadFile.mutate(file);
+                  void processFileForUpload(file);
                 });
                 e.target.value = "";
               }}
@@ -928,39 +1085,42 @@ export default function ChatClient() {
           <div className="flex-1 overflow-y-auto px-3">
             {filesLoading ? (
               <div className="py-4 text-center text-[0.82rem] text-text-dim">Loading...</div>
-            ) : indexedFiles.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <div className="text-2xl mb-2 opacity-40">📁</div>
-                <div className="text-[0.82rem] text-text-dim font-light">No files indexed yet</div>
-                <div className="text-[0.72rem] text-text-dim mt-1">Upload files above to get started</div>
-              </div>
             ) : (
               <>
                 <div className="font-mono text-[0.65rem] text-text-dim tracking-widest uppercase px-1 pt-2.5 pb-1">
                   {t("chat.indexedFiles", { count: String(indexedFiles.length) })}
                 </div>
-                {indexedFiles.map((f) => (
-                  <div key={f.id} className="group flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-colors mb-px hover:bg-bg-card">
-                    <span className="text-[0.9rem]">{f.type === ".pdf" ? "📄" : f.type === ".docx" ? "📝" : "📃"}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[0.82rem] whitespace-nowrap overflow-hidden text-ellipsis">{f.name}</div>
-                      <div className="font-mono text-[0.68rem] text-text-dim">
-                        {f.size > 1024 * 1024
-                          ? `${(f.size / 1024 / 1024).toFixed(1)} MB`
-                          : `${Math.round(f.size / 1024)} KB`}
-                        {" · "}{f.chunks} chunks
-                      </div>
-                    </div>
-                    <span className="font-mono text-[0.65rem] text-accent bg-accent/15 px-1.5 py-0.5 rounded">{t("chat.indexed")}</span>
-                    <button
-                      type="button"
-                      className="opacity-0 group-hover:opacity-100 bg-transparent border-none text-text-dim cursor-pointer text-[0.8rem] px-1 py-0.5 rounded transition-all hover:text-danger"
-                      onClick={() => deleteFile.mutate(f.id)}
-                    >
-                      ✕
-                    </button>
+                {indexedFiles.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-6 text-center">
+                    <div className="text-2xl mb-2 opacity-40">📄</div>
+                    <div className="text-[0.82rem] text-text-dim font-light">No files indexed yet</div>
+                    <div className="text-[0.72rem] text-text-dim mt-1">Upload files above to get started</div>
                   </div>
-                ))}
+                ) : (
+                  indexedFiles.map((f) => (
+                    <div key={f.id} className="group flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-colors mb-px hover:bg-bg-card">
+                      <span className="text-[0.9rem]">{f.type === ".pdf" ? "📄" : f.type === ".docx" ? "📝" : "📃"}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[0.82rem] whitespace-nowrap overflow-hidden text-ellipsis">{f.name}</div>
+                        <div className="font-mono text-[0.68rem] text-text-dim">
+                          {f.size > 1024 * 1024
+                            ? `${(f.size / 1024 / 1024).toFixed(1)} MB`
+                            : `${Math.round(f.size / 1024)} KB`}
+                          {" · "}
+                          {f.chunks} chunks
+                        </div>
+                      </div>
+                      <span className="font-mono text-[0.65rem] text-accent bg-accent/15 px-1.5 py-0.5 rounded">{t("chat.indexed")}</span>
+                      <button
+                        type="button"
+                        className="opacity-0 group-hover:opacity-100 bg-transparent border-none text-text-dim cursor-pointer text-[0.8rem] px-1 py-0.5 rounded transition-all hover:text-danger"
+                        onClick={() => deleteFile.mutate(f.id)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))
+                )}
               </>
             )}
           </div>
@@ -978,43 +1138,14 @@ export default function ChatClient() {
                   Showing models installed in Ollama
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => { setShowPullModal(true); setPullError(null); }}
-                  disabled={isPulling}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-bg border-none rounded-lg font-body text-[0.8rem] font-semibold cursor-pointer transition-all hover:opacity-85 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isPulling ? t("modelEngines.downloading") : t("modelEngines.pullModel")}
-                </button>
-                <button type="button" className="bg-transparent border-none text-text-dim cursor-pointer text-xl px-2 py-1 rounded transition-colors hover:text-danger" onClick={() => setModelOverlayOpen(false)}>✕</button>
-              </div>
+              <button type="button" className="bg-transparent border-none text-text-dim cursor-pointer text-xl px-2 py-1 rounded transition-colors hover:text-danger" onClick={() => setModelOverlayOpen(false)}>✕</button>
             </div>
 
-            {download && (
-              <div className="mb-4 bg-bg-card border border-border rounded-xl p-3">
-                <div className="flex justify-between font-mono text-xs text-text-muted mb-1.5">
-                  <span>{download.status} — {download.modelName}</span>
-                  <span>{download.percent}%</span>
-                </div>
-                <div className="w-full h-1.5 bg-border rounded-full overflow-hidden">
-                  <div className="h-full bg-accent rounded-full transition-all duration-300" style={{ width: `${download.percent}%` }} />
-                </div>
-              </div>
-            )}
-
-            {ollamaModels.length === 0 && !download ? (
+            {ollamaModels.length === 0 ? (
               <div className="text-center py-8 text-text-dim">
                 <div className="text-2xl mb-2">🤖</div>
                 <div className="text-[0.85rem]">No models found in Ollama</div>
-                <button
-                  type="button"
-                  onClick={() => { setShowPullModal(true); setPullError(null); }}
-                  className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-accent text-bg border-none rounded-lg font-body text-[0.85rem] font-semibold cursor-pointer transition-all hover:opacity-85"
-                >
-                  <Download size={14} />
-                  {t("modelEngines.pullModel")}
-                </button>
+                <div className="text-[0.75rem] mt-1">Run: docker compose exec ollama ollama pull llama3.1:8b</div>
               </div>
             ) : (
               <div>
@@ -1051,86 +1182,118 @@ export default function ChatClient() {
         </div>
       )}
 
-      {/* Pull Modal */}
-      {showPullModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1001] backdrop-blur-sm">
-          <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-[460px] p-8 shadow-[0_25px_80px_rgba(0,0,0,0.6)] relative">
-            <button
-              onClick={() => setShowPullModal(false)}
-              className="absolute top-4 right-4 bg-transparent border-none text-text-dim text-xl cursor-pointer"
-            >
-              &times;
-            </button>
-            <h3 className="text-xl font-semibold mb-1">{t("modelEngines.pullNewModel")}</h3>
-            <p className="text-text-muted text-[0.88rem] font-light mb-5">
-              {t("modelEngines.pullModelDesc")}{" "}
-              <a
-                href="https://ollama.com/library"
-                target="_blank"
-                rel="noreferrer"
-                className="text-accent"
-              >
-                ollama.com/library
-              </a>
-              .
-            </p>
-            <div className="flex gap-2">
-              <input
-                value={pullInput}
-                onChange={(e) => {
-                  setPullInput(e.target.value);
-                  if (pullError) setPullError(null);
-                }}
-                onKeyDown={(e) => e.key === "Enter" && handlePullModel()}
-                placeholder={t("modelEngines.pullPlaceholder")}
-                className={`flex-1 px-4 py-3 bg-bg-card border rounded-lg text-text font-mono text-[0.88rem] outline-none focus:border-border-focus ${
-                  pullError ? "border-danger" : "border-border"
-                }`}
-              />
-              <button
-                onClick={handlePullModel}
-                disabled={isValidating}
-                className="px-5 py-3 bg-accent text-bg border-none rounded-lg font-body font-semibold text-[0.88rem] cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isValidating ? t("modelEngines.validating") : t("modelEngines.pull")}
-              </button>
-            </div>
-            {pullError && (
-              <div className="font-mono text-[0.78rem] text-danger mt-2">
-                {pullError}
+      {embeddingModalOpen && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000] backdrop-blur-[8px] animate-[fadeIn_0.3s_ease]">
+          <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-[560px] max-h-[90vh] overflow-y-auto p-8 shadow-[0_25px_80px_rgba(0,0,0,0.6)]">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-[1.4rem] font-bold mb-1.5">{t("chat.embeddingModalTitle")}</h2>
+                <p className="text-text-muted text-[0.92rem] font-light leading-relaxed">
+                  {t("chat.embeddingModalDesc")}
+                </p>
               </div>
-            )}
-            <div className="font-mono text-[0.72rem] text-text-dim mt-2">
-              {t("modelEngines.popular")}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Whisper not connected alert */}
-      {whisperAlert && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
-          <div className="w-[min(400px,90vw)] bg-bg-elevated border border-border rounded-2xl shadow-2xl p-6 text-center">
-            <div className="w-14 h-14 rounded-full bg-accent-warm/15 border-2 border-accent-warm flex items-center justify-center text-2xl mx-auto mb-4">
-              🎙️
-            </div>
-            <h2 className="text-[1.1rem] font-bold mb-2">{t("chat.whisperDisconnected")}</h2>
-            <p className="text-text-muted text-[0.85rem] font-light mb-6">{t("chat.whisperDisconnectedDesc")}</p>
-            <div className="flex gap-3">
               <button
                 type="button"
-                onClick={() => setWhisperAlert(false)}
-                className="flex-1 px-4 py-2.5 bg-transparent text-text-muted border border-border rounded-lg font-body text-[0.85rem] cursor-pointer transition-all hover:border-text-muted"
+                className="bg-transparent border-none text-text-dim cursor-pointer text-xl px-2 py-1 rounded transition-colors hover:text-danger"
+                onClick={() => {
+                  setEmbeddingModalOpen(false);
+                  setPendingPdfFile(null);
+                  setEmbeddingStatusSnapshot(null);
+                  setEmbeddingModalError(null);
+                  setEmbeddingPullProgress(null);
+                }}
               >
-                {t("common.close")}
+                ✕
               </button>
-              <Link
-                href="/model-engines"
-                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-accent text-bg border-none rounded-lg font-body text-[0.85rem] font-semibold no-underline cursor-pointer transition-all hover:opacity-85"
-              >
-                {t("sidebar.modelEngines")} <ArrowRight size={16} />
-              </Link>
             </div>
+
+            {embeddingModalError && (
+              <div className="mb-4 px-3 py-2 rounded-lg bg-danger/10 border border-danger/30 text-danger text-[0.85rem]">
+                {embeddingModalError}
+              </div>
+            )}
+
+            <div className={`space-y-2.5 mb-6 ${embeddingBusy ? "opacity-50 pointer-events-none" : ""}`}>
+              {embeddingChoices.map((c) => (
+                <div
+                  key={c.value}
+                  role="button"
+                  tabIndex={0}
+                  className={`flex items-center gap-4 p-4 border rounded-[10px] cursor-pointer transition-all ${
+                    embeddingChoice === c.value
+                      ? "border-accent bg-accent/15"
+                      : "border-border hover:border-border-accent hover:bg-bg-card"
+                  }`}
+                  onClick={() => setEmbeddingChoice(c.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") setEmbeddingChoice(c.value);
+                  }}
+                >
+                  <div
+                    className={`w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                      embeddingChoice === c.value ? "border-accent" : "border-border"
+                    }`}
+                  >
+                    <div
+                      className={`w-2 h-2 rounded-full bg-accent transition-opacity ${
+                        embeddingChoice === c.value ? "opacity-100" : "opacity-0"
+                      }`}
+                    />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="text-[0.95rem] font-semibold font-mono">{c.label}</div>
+                    <div className="font-mono text-[0.68rem] text-text-dim mt-0.5">
+                      {c.installed ? t("chat.embeddingInstalled") : t("chat.embeddingWillDownload")}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {embeddingPullProgress !== null && (
+              <div className="mb-4 bg-bg-card border border-border rounded-xl p-4">
+                <div className="flex justify-between font-mono text-xs text-text-muted mb-2">
+                  <span className="truncate pr-2">
+                    {embeddingPullProgress.status === "success"
+                      ? t("modelEngines.downloadedSuccess", { name: embeddingChoice })
+                      : embeddingPullProgress.status
+                        ? `${embeddingPullProgress.status} — ${embeddingChoice}`
+                        : t("modelEngines.pulling", { name: embeddingChoice })}
+                  </span>
+                  <span className="shrink-0">{embeddingPullProgress.percent}%</span>
+                </div>
+                <div className="h-1.5 bg-bg rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-accent rounded-full transition-all duration-300"
+                    style={{ width: `${embeddingPullProgress.percent}%` }}
+                  />
+                </div>
+                {embeddingPullProgress.total > 0 && (
+                  <div className="mt-2 font-mono text-[0.65rem] text-text-dim">
+                    {t("chat.embeddingBytesProgress", {
+                      done: formatBytes(embeddingPullProgress.completed),
+                      total: formatBytes(embeddingPullProgress.total),
+                      remaining: formatBytes(
+                        Math.max(0, embeddingPullProgress.total - embeddingPullProgress.completed),
+                      ),
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
+              disabled={embeddingBusy || embeddingChoices.length === 0}
+              className="w-full py-3 rounded-lg bg-accent text-bg font-semibold text-[0.9rem] border-none cursor-pointer transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => void handleEmbeddingModalContinue()}
+            >
+              {embeddingBusy
+                ? embeddingPullProgress !== null
+                  ? `${embeddingPullProgress.percent}%`
+                  : t("chat.embeddingPreparing")
+                : t("chat.embeddingContinue")}
+            </button>
           </div>
         </div>
       )}

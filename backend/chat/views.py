@@ -329,6 +329,89 @@ class ModelListView(APIView):
             return Response({"models": [], "error": str(e)})
 
 
+# Recommended embedding models for document indexing (Ollama library names, without :latest)
+RECOMMENDED_EMBEDDING_MODELS = (
+    "nomic-embed-text",
+    "mxbai-embed-large",
+    "snowflake-arctic-embed",
+    "all-minilm",
+)
+
+
+def _normalize_model_base(name: str) -> str:
+    if not name:
+        return ""
+    return name.split(":")[0].strip().lower()
+
+
+def _ollama_tags_list():
+    ollama_url = os.environ.get("OLLAMA_HOST", "http://ollama:11434")
+    resp = requests.get(f"{ollama_url.rstrip('/')}/api/tags", timeout=8)
+    resp.raise_for_status()
+    return resp.json().get("models", [])
+
+
+class EmbeddingModelsStatusView(APIView):
+    """Report whether the configured embedding model is present in Ollama."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from system.models import ModelConfig
+
+        config = ModelConfig.get_or_create_singleton()
+        configured = (config.embedding_model or "").strip() or "nomic-embed-text"
+        base_want = _normalize_model_base(configured)
+
+        try:
+            tags = _ollama_tags_list()
+        except Exception as e:
+            return Response(
+                {
+                    "configured_embedding_model": configured,
+                    "installed": False,
+                    "installed_embedding_models": [],
+                    "recommended": list(RECOMMENDED_EMBEDDING_MODELS),
+                    "error": str(e),
+                }
+            )
+
+        installed_embedding = []
+        for m in tags:
+            name = m.get("name", "")
+            if "embed" in name.lower():
+                size_bytes = m.get("size", 0)
+                size_gb = round(size_bytes / (1024 ** 3), 2) if size_bytes else 0
+                label = f"{size_gb} GB" if size_gb >= 0.01 else f"{max(1, round(size_bytes / (1024 ** 2)))} MB"
+                installed_embedding.append({"name": name, "size": label})
+
+        installed = any(_normalize_model_base(m.get("name", "")) == base_want for m in tags)
+
+        return Response(
+            {
+                "configured_embedding_model": configured,
+                "installed": installed,
+                "installed_embedding_models": installed_embedding,
+                "recommended": list(RECOMMENDED_EMBEDDING_MODELS),
+            }
+        )
+
+
+class ModelListAllView(APIView):
+    """List all Ollama models including embeddings (Model Engines downloaded table)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            rag_url = urljoin(RAG_SERVICE_URL, "/api/models/all")
+            resp = requests.get(rag_url, headers=_rag_headers(), timeout=10)
+            resp.raise_for_status()
+            return Response(resp.json())
+        except Exception as e:
+            return Response({"models": [], "error": str(e)})
+
+
 class ModelPullView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -487,9 +570,15 @@ class FileUploadView(APIView):
                 pass  # Don't block upload if count check fails
 
         try:
+            from system.models import ModelConfig
+
+            config = ModelConfig.get_or_create_singleton()
+            embedding_model = (config.embedding_model or "").strip() or "nomic-embed-text"
+
             rag_url = urljoin(RAG_SERVICE_URL, "/api/files/upload")
             files = {"file": (uploaded_file.name, uploaded_file.read(), uploaded_file.content_type)}
-            resp = requests.post(rag_url, files=files, headers=_rag_headers(), timeout=300)
+            data = {"embedding_model": embedding_model}
+            resp = requests.post(rag_url, files=files, data=data, headers=_rag_headers(), timeout=300)
             resp.raise_for_status()
             data = resp.json()
             if "error" in data:

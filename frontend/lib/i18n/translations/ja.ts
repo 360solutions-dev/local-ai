@@ -289,9 +289,6 @@ const ja: Translations = {
   "modelEngines.invalidModelName": "形式が無効です。形式：model、model:tag、または namespace/model:tag",
   "modelEngines.modelNotFound": "Ollamaライブラリにモデルが見つかりません。ollama.com/library で確認してください",
   "modelEngines.modelAlreadyExists": "このモデルは既にダウンロード済みです。",
-  "modelEngines.whisperService": "Whisper",
-  "modelEngines.whisperDescription": "faster-whisperによるローカル音声テキスト変換サービス。",
-  "modelEngines.whisperType": "音声テキスト変換",
   "modelEngines.validating": "確認中...",
   "modelEngines.connectProvider": "プロバイダーを接続",
   "modelEngines.connectProviderDesc": "このプロバイダーの接続情報を入力してください。",
@@ -381,6 +378,7 @@ const ja: Translations = {
   "chat.dropFiles": "ファイルをドロップまたはクリックしてアップロード",
   "chat.supportedFormats": ".pdf, .docx, .xlsx, .csv, .txt, .md",
   "chat.indexedFiles": "インデックス済みファイル（{count}）",
+  "chat.chatModelSubtitle": "Ollama",
   "chat.indexed": "インデックス済み",
   "chat.you": "あなた",
   "chat.copy": "コピー",
@@ -398,9 +396,16 @@ const ja: Translations = {
   "chat.micPermissionDenied": "マイクの権限が拒否されました。ブラウザの設定でアクセスを許可してください。",
   "chat.voiceNotSupported": "このブラウザでは音声入力はサポートされていません。",
   "chat.voiceError": "音声を文字起こしできませんでした。もう一度お試しください。",
-  "chat.whisperDisconnected": "Whisper未接続",
-  "chat.whisperDisconnectedDesc": "音声入力を使用するには、モデルエンジンページからWhisperサービスを接続してください。",
   "chat.voiceNoSpeech": "音声が検出されませんでした。もう一度お試しください。",
+
+  "chat.embeddingModalTitle": "埋め込みモデルが必要です",
+  "chat.embeddingModalDesc":
+    "PDFのインデックスにはOllamaの埋め込みモデルが必要です。ファイルチャット用にモデルを選ぶか、未インストールならダウンロードしてください。モデルエンジンに保存されます。",
+  "chat.embeddingInstalled": "ローカルにインストール済み",
+  "chat.embeddingWillDownload": "Ollamaからダウンロードされます",
+  "chat.embeddingPreparing": "モデルを準備中…",
+  "chat.embeddingContinue": "続行してPDFをインデックス",
+  "chat.embeddingBytesProgress": "{done} / {total}（残り {remaining}）",
 };
 
 export default ja;

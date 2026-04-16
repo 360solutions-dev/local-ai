@@ -289,9 +289,6 @@ const es: Translations = {
   "modelEngines.invalidModelName": "Formato no válido. Use: model, model:tag o namespace/model:tag",
   "modelEngines.modelNotFound": "Modelo no encontrado en la biblioteca de Ollama. Explore modelos en ollama.com/library",
   "modelEngines.modelAlreadyExists": "Este modelo ya está descargado.",
-  "modelEngines.whisperService": "Whisper",
-  "modelEngines.whisperDescription": "Servicio local de voz a texto con faster-whisper.",
-  "modelEngines.whisperType": "Voz a texto",
   "modelEngines.validating": "Verificando...",
   "modelEngines.connectProvider": "Conectar proveedor",
   "modelEngines.connectProviderDesc": "Ingrese los detalles de conexión para este proveedor.",
@@ -381,6 +378,7 @@ const es: Translations = {
   "chat.dropFiles": "Arrastra archivos aquí o haz clic para subir",
   "chat.supportedFormats": ".pdf, .docx, .xlsx, .csv, .txt, .md",
   "chat.indexedFiles": "Archivos indexados ({count})",
+  "chat.chatModelSubtitle": "Ollama",
   "chat.indexed": "Indexado",
   "chat.you": "Tú",
   "chat.copy": "Copiar",
@@ -398,9 +396,16 @@ const es: Translations = {
   "chat.micPermissionDenied": "Permiso de micrófono denegado. Permite el acceso en la configuración del navegador.",
   "chat.voiceNotSupported": "La entrada de voz no es compatible con este navegador.",
   "chat.voiceError": "No se pudo transcribir el audio. Inténtalo de nuevo.",
-  "chat.whisperDisconnected": "Whisper no conectado",
-  "chat.whisperDisconnectedDesc": "Conecta el servicio Whisper desde la página de Model Engines para usar la entrada de voz.",
   "chat.voiceNoSpeech": "No se detectó voz. Inténtalo de nuevo.",
+
+  "chat.embeddingModalTitle": "Modelo de embedding requerido",
+  "chat.embeddingModalDesc":
+    "La indexación de PDF requiere un modelo de embedding en Ollama. Elige uno para el chat con archivos o descárgalo si falta. Se guardará en Motores de modelo.",
+  "chat.embeddingInstalled": "Instalado localmente",
+  "chat.embeddingWillDownload": "Se descargará desde Ollama",
+  "chat.embeddingPreparing": "Preparando modelo…",
+  "chat.embeddingContinue": "Continuar e indexar PDF",
+  "chat.embeddingBytesProgress": "{done} / {total} ({remaining} restantes)",
 };
 
 export default es;

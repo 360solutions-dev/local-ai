@@ -332,9 +332,6 @@ const en = {
   "modelEngines.providerNamePlaceholder": "e.g. My LM Studio, LocalAI",
   "modelEngines.connectionFailed": "Connection failed. Make sure the provider is running at this endpoint.",
   "modelEngines.modelAlreadyExists": "This model is already downloaded.",
-  "modelEngines.whisperService": "Whisper",
-  "modelEngines.whisperDescription": "Local speech-to-text service powered by faster-whisper.",
-  "modelEngines.whisperType": "Speech-to-Text",
 
   // Text to Audio
   "tts.title": "Text to Audio",
@@ -394,6 +391,7 @@ const en = {
   "chat.dropFiles": "Drop files here or click to upload",
   "chat.supportedFormats": ".pdf, .docx, .xlsx, .csv, .txt, .md",
   "chat.indexedFiles": "Indexed Files ({count})",
+  "chat.chatModelSubtitle": "Ollama",
   "chat.indexed": "Indexed",
   "chat.you": "You",
   "chat.copy": "Copy",
@@ -411,9 +409,16 @@ const en = {
   "chat.micPermissionDenied": "Microphone permission denied. Allow access in your browser settings.",
   "chat.voiceNotSupported": "Voice input is not supported in this browser.",
   "chat.voiceError": "Could not transcribe audio. Please try again.",
-  "chat.whisperDisconnected": "Whisper not connected",
-  "chat.whisperDisconnectedDesc": "Connect the Whisper service from the Model Engines page to use voice input.",
   "chat.voiceNoSpeech": "No speech detected. Please try again.",
+
+  "chat.embeddingModalTitle": "Embedding model required",
+  "chat.embeddingModalDesc":
+    "PDF indexing needs an embedding model in Ollama. Choose one for file chat, or download it if missing. This will be saved under Model Engines.",
+  "chat.embeddingInstalled": "Installed locally",
+  "chat.embeddingWillDownload": "Will be downloaded from Ollama",
+  "chat.embeddingPreparing": "Preparing model…",
+  "chat.embeddingContinue": "Continue & index PDF",
+  "chat.embeddingBytesProgress": "{done} / {total} ({remaining} remaining)",
 } as const;
 
 export type TranslationKeys = keyof typeof en;
