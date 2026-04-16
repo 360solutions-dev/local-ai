@@ -33,9 +33,6 @@ export default function VoiceInput({ open, onClose, onTranscribed, language, act
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
-  // Tracks whether the user explicitly cancelled (via X) so the recorder's
-  // onstop handler skips the upload + auto-send path. Refs (not state) because
-  // onstop fires asynchronously after setState would have batched.
   const cancelledRef = useRef(false);
 
   // Reset when the overlay closes so reopening starts fresh.
@@ -82,8 +79,6 @@ export default function VoiceInput({ open, onClose, onTranscribed, language, act
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          // Whisper downsamples to 16kHz internally — request mono at 16kHz
-          // when the browser/OS allows so we upload less data.
           channelCount: 1,
           sampleRate: 16000,
           echoCancellation: true,
@@ -99,11 +94,8 @@ export default function VoiceInput({ open, onClose, onTranscribed, language, act
 
     let recorder: MediaRecorder;
     try {
-      // webm/opus is the most widely supported MediaRecorder format and
-      // ffmpeg in the whisper container decodes it natively.
       recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
     } catch {
-      // Fall back to whatever default the browser supports (Safari, etc.).
       try {
         recorder = new MediaRecorder(stream);
       } catch {
@@ -165,7 +157,6 @@ export default function VoiceInput({ open, onClose, onTranscribed, language, act
       const secs = Math.floor((Date.now() - startedAt) / 1000);
       setElapsed(secs);
       if (secs >= MAX_RECORD_SECONDS) {
-        // Auto-stop on the cap so we never send oversized uploads.
         handleStop();
       }
     }, 250);
@@ -180,7 +171,7 @@ export default function VoiceInput({ open, onClose, onTranscribed, language, act
   function handleCancel() {
     cancelledRef.current = true;
     if (recorderRef.current && recorderRef.current.state !== "inactive") {
-      recorderRef.current.stop(); // triggers onstop, which will short-circuit
+      recorderRef.current.stop();
     } else {
       stopTracks();
       clearTimer();

@@ -21,4 +21,7 @@ urlpatterns = [
     path("providers/<uuid:provider_id>/models/", views.ProviderModelsView.as_view(), name="provider-models"),
     path("model-config/", views.ModelConfigView.as_view(), name="model-config"),
     path("services/whisper/health/", views.WhisperHealthView.as_view(), name="whisper-health"),
+    path("services/whisper/models/", views.WhisperModelsView.as_view(), name="whisper-models"),
+    path("services/whisper/models/pull/", views.WhisperPullModelView.as_view(), name="whisper-pull-model"),
+    path("services/whisper/models/<str:model_name>/", views.WhisperDeleteModelView.as_view(), name="whisper-delete-model"),
 ]

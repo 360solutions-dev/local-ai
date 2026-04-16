@@ -21,6 +21,9 @@ interface DownloadContextValue {
   download: DownloadState | null;
   isPulling: boolean;
   startPull: (name: string) => void;
+  whisperDownload: DownloadState | null;
+  isWhisperPulling: boolean;
+  startWhisperPull: (name: string) => void;
 }
 
 const DownloadContext = createContext<DownloadContextValue | null>(null);
@@ -143,8 +146,118 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
     [isPulling, queryClient],
   );
 
+  // ---- Whisper model pull (SSE, same pattern) ----
+  const [whisperDownload, setWhisperDownload] = useState<DownloadState | null>(null);
+  const [isWhisperPulling, setIsWhisperPulling] = useState(false);
+  const whisperAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (isWhisperPulling) {
+        e.preventDefault();
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isWhisperPulling]);
+
+  const startWhisperPull = useCallback(
+    async (name: string) => {
+      if (isWhisperPulling) return;
+
+      const controller = new AbortController();
+      whisperAbortRef.current = controller;
+      setIsWhisperPulling(true);
+      setWhisperDownload({ modelName: name, percent: 0, status: `Pulling ${name}...` });
+
+      try {
+        const resp = await fetch("/api/whisper-pull", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ name }),
+          signal: controller.signal,
+        });
+
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+        const reader = resp.body?.getReader();
+        if (!reader) throw new Error("No response stream");
+
+        const decoder = new TextDecoder();
+        let buf = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            const jsonStr = trimmed.startsWith("data: ") ? trimmed.slice(6) : trimmed;
+            try {
+              const data = JSON.parse(jsonStr);
+              if (data.status === "error") {
+                throw new Error(data.error || "Pull failed");
+              }
+              setWhisperDownload((prev) => ({
+                modelName: prev?.modelName || name,
+                percent: data.percent ?? prev?.percent ?? 0,
+                status:
+                  data.status === "success"
+                    ? "Complete!"
+                    : data.status || prev?.status || "",
+              }));
+            } catch (parseErr) {
+              if (
+                parseErr instanceof Error &&
+                (parseErr.message === "Pull failed" ||
+                  parseErr.message.startsWith("Pull failed"))
+              ) {
+                throw parseErr;
+              }
+            }
+          }
+        }
+
+        setWhisperDownload((prev) => ({
+          modelName: prev?.modelName || name,
+          percent: 100,
+          status: "Complete!",
+        }));
+        queryClient.invalidateQueries({ queryKey: ["system", "whisper-models"] });
+        queryClient.invalidateQueries({ queryKey: ["system", "whisper-health"] });
+
+        setTimeout(() => {
+          setWhisperDownload(null);
+          setIsWhisperPulling(false);
+        }, 2000);
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") {
+          setWhisperDownload((prev) => ({
+            modelName: prev?.modelName || name,
+            percent: 0,
+            status: `Error: ${(err as Error).message}`,
+          }));
+          setTimeout(() => {
+            setWhisperDownload(null);
+            setIsWhisperPulling(false);
+          }, 3000);
+        } else {
+          setWhisperDownload(null);
+          setIsWhisperPulling(false);
+        }
+      }
+    },
+    [isWhisperPulling, queryClient],
+  );
+
   return (
-    <DownloadContext.Provider value={{ download, isPulling, startPull }}>
+    <DownloadContext.Provider value={{ download, isPulling, startPull, whisperDownload, isWhisperPulling, startWhisperPull }}>
       {children}
     </DownloadContext.Provider>
   );

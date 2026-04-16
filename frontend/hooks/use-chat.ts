@@ -346,6 +346,96 @@ export function useSystemHealth() {
 }
 
 // ---------------------------------------------------------------------------
+// Whisper service health hook
+// ---------------------------------------------------------------------------
+
+export interface WhisperModelInfo {
+  name: string;
+  size: number;
+  size_label: string;
+}
+
+export interface WhisperAvailableModel {
+  name: string;
+}
+
+export interface WhisperHealth {
+  connected: boolean;
+  model: string;
+  has_model: boolean;
+  models: WhisperModelInfo[];
+  available_models: WhisperAvailableModel[];
+  endpoint: string;
+  latency_ms?: number;
+}
+
+export function useWhisperHealth() {
+  return useQuery({
+    queryKey: ["system", "whisper-health"],
+    queryFn: async () => {
+      const res = await apiGet<WhisperHealth>("/api/system/services/whisper/health/");
+      if (!res.ok) return { connected: false, model: "", has_model: false, models: [], available_models: [], endpoint: "" } as WhisperHealth;
+      return res.data;
+    },
+    refetchInterval: 15_000,
+  });
+}
+
+export function useWhisperModels() {
+  return useQuery({
+    queryKey: ["system", "whisper-models"],
+    queryFn: async () => {
+      const res = await apiGet<{ models: WhisperModelInfo[] }>("/api/system/services/whisper/models/");
+      if (!res.ok) return [];
+      return res.data.models;
+    },
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function usePullWhisperModel() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiPost<{ status: string; model: string }>("/api/system/services/whisper/models/pull/", { name });
+      if (!res.ok) {
+        throw new Error(
+          (res.data as unknown as { error?: { message?: string } })?.error?.message || "Failed to pull whisper model.",
+        );
+      }
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["system", "whisper-models"] });
+      queryClient.invalidateQueries({ queryKey: ["system", "whisper-health"] });
+    },
+  });
+}
+
+export function useDeleteWhisperModel() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiDelete(`/api/system/services/whisper/models/${encodeURIComponent(name)}/`);
+      if (!res.ok) {
+        throw new Error(
+          (res.data as { error?: { message?: string } })?.error?.message || "Failed to delete whisper model.",
+        );
+      }
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["system", "whisper-models"] });
+      queryClient.invalidateQueries({ queryKey: ["system", "whisper-health"] });
+    },
+  });
+}
+
+
+// ---------------------------------------------------------------------------
 // Provider connection test hook
 // ---------------------------------------------------------------------------
 

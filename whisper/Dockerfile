@@ -10,14 +10,9 @@ RUN apt-get update && \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download the model at build time so the first request doesn't pay the
-# download cost. The model is cached under /models (mounted as a volume in
-# docker-compose) so rebuilds don't re-download. ARG default matches the
-# WHISPER_MODEL env var default below.
-ARG WHISPER_MODEL=base
+# Models are downloaded on-demand via the /models/pull API, not at build time.
+# The /models volume (mounted in docker-compose) persists downloads across restarts.
 ENV WHISPER_MODEL_CACHE=/models
-RUN python -c "from faster_whisper import WhisperModel; \
-    WhisperModel('${WHISPER_MODEL}', device='cpu', compute_type='int8', download_root='${WHISPER_MODEL_CACHE}')"
 
 COPY . .
 

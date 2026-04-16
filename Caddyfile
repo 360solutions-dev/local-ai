@@ -1,5 +1,7 @@
 http://local-ai.localhost {
-	reverse_proxy nextjs:3000
+	reverse_proxy nextjs:3000 {
+		flush_interval -1
+	}
 }
 
 http://api.local-ai.localhost {

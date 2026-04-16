@@ -28,12 +28,15 @@ import {
   useModelConfig,
   useUpdateModelConfig,
   useProviders,
+  useWhisperHealth,
+  useWhisperModels,
   OPTIMISTIC_PREFIX,
   type ChatMessage,
   type EmbeddingModelsStatus,
 } from "@/hooks/use-chat";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api";
+import { useDownload } from "@/lib/download-provider";
 import { formatBytes } from "@/hooks/use-storage";
 
 /** Same SSE shape as `/api/models/pull` → RAG (see `DownloadProvider`). */
@@ -166,6 +169,9 @@ export default function ChatClient() {
   const { t, locale } = useTranslation();
   const [filePanelOpen, setFilePanelOpen] = useState(true);
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const [whisperAlert, setWhisperAlert] = useState(false);
+  const [showWhisperPullModal, setShowWhisperPullModal] = useState(false);
+  const [whisperPullName, setWhisperPullName] = useState("");
   const [activeChatId, setActiveChatId] = useState<number | null>(null);
   const [modelOverlayOpen, setModelOverlayOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>("");
@@ -205,6 +211,13 @@ export default function ChatClient() {
   const { data: modelConfig } = useModelConfig();
   const updateModelConfig = useUpdateModelConfig();
   const { data: providers = [] } = useProviders();
+  const { data: whisperHealth } = useWhisperHealth();
+  const { data: whisperModels = [] } = useWhisperModels();
+  const { download, isPulling, startPull, whisperDownload, isWhisperPulling, startWhisperPull } = useDownload();
+  const [showPullModal, setShowPullModal] = useState(false);
+  const [pullInput, setPullInput] = useState("");
+  const [pullError, setPullError] = useState<string | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
 
   const [embeddingModalOpen, setEmbeddingModalOpen] = useState(false);
   const [pendingPdfFile, setPendingPdfFile] = useState<File | null>(null);
@@ -310,6 +323,22 @@ export default function ChatClient() {
       isSwitchingRef.current = false;
     }
   }, [activeChatId]);
+
+  // Auto-close whisper pull modal only when a pull transitions from active → done
+  const wasWhisperPulling = useRef(false);
+  useEffect(() => {
+    if (isWhisperPulling) {
+      wasWhisperPulling.current = true;
+    } else if (wasWhisperPulling.current) {
+      wasWhisperPulling.current = false;
+      if (whisperAlert) setWhisperAlert(false);
+      if (showWhisperPullModal) {
+        setShowWhisperPullModal(false);
+        setWhisperPullName("");
+        setVoiceOpen(true);
+      }
+    }
+  }, [isWhisperPulling, whisperAlert, showWhisperPullModal]);
 
   // Auto-select first available model
   useEffect(() => {
@@ -966,7 +995,14 @@ export default function ChatClient() {
                   className="w-[34px] h-[34px] rounded-lg border border-border bg-bg-elevated text-text-muted cursor-pointer flex items-center justify-center transition-all hover:border-accent hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed"
                   title={t("chat.voiceInput")}
                   aria-label={t("chat.voiceInput")}
-                  onClick={() => setVoiceOpen(true)}
+                  onClick={() => {
+                    const disabled = typeof window !== "undefined" && localStorage.getItem("whisper_disabled") === "true";
+                    if (disabled || !whisperHealth?.connected || !whisperHealth?.has_model) {
+                      setWhisperAlert(true);
+                    } else {
+                      setVoiceOpen(true);
+                    }
+                  }}
                   disabled={isSending}
                 >
                   <Mic size={16} />
@@ -1005,6 +1041,7 @@ export default function ChatClient() {
             setInput(text);
           }}
           language={locale}
+          activeModel={whisperHealth?.model || ""}
         />
 
         {/* File Panel */}
@@ -1294,6 +1331,156 @@ export default function ChatClient() {
                   : t("chat.embeddingPreparing")
                 : t("chat.embeddingContinue")}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Whisper not connected / no model alert */}
+      {whisperAlert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
+          <div className="w-[min(420px,90vw)] bg-bg-elevated border border-border rounded-2xl shadow-2xl p-6 text-center">
+            <div className="w-14 h-14 rounded-full bg-accent-warm/15 border-2 border-accent-warm flex items-center justify-center text-2xl mx-auto mb-4">
+              🎙️
+            </div>
+            <h2 className="text-[1.1rem] font-bold mb-2">
+              {isWhisperPulling
+                ? t("chat.whisperNoModel")
+                : whisperHealth?.connected && !whisperHealth?.has_model
+                  ? t("chat.whisperNoModel")
+                  : t("chat.whisperDisconnected")}
+            </h2>
+            <p className="text-text-muted text-[0.85rem] font-light mb-4">
+              {isWhisperPulling
+                ? t("chat.whisperNoModelDesc")
+                : whisperHealth?.connected && !whisperHealth?.has_model
+                  ? t("chat.whisperNoModelDesc")
+                  : t("chat.whisperDisconnectedDesc")}
+            </p>
+
+            {/* Progress bar while pulling */}
+            {whisperDownload && (
+              <div className="mb-5">
+                <div className="flex justify-between font-mono text-xs text-text-muted mb-2">
+                  <span>🎙️ {whisperDownload.status}</span>
+                  <span>{whisperDownload.percent}%</span>
+                </div>
+                <div className="h-1.5 bg-bg rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-accent rounded-full transition-all duration-300"
+                    style={{ width: `${whisperDownload.percent}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setWhisperAlert(false)}
+                className="flex-1 px-4 py-2.5 bg-transparent text-text-muted border border-border rounded-lg font-body text-[0.85rem] cursor-pointer transition-all hover:border-text-muted"
+              >
+                {t("common.close")}
+              </button>
+              {isWhisperPulling ? null : whisperHealth?.connected && !whisperHealth?.has_model ? (
+                <button
+                  type="button"
+                  onClick={() => { setWhisperAlert(false); setShowWhisperPullModal(true); setWhisperPullName(""); }}
+                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-accent text-bg border-none rounded-lg font-body text-[0.85rem] font-semibold cursor-pointer transition-all hover:opacity-85"
+                >
+                  <span className="text-[0.95rem] leading-none">+</span> {t("modelEngines.pullWhisperModel")}
+                </button>
+              ) : !whisperHealth?.connected ? (
+                <Link
+                  href="/model-engines"
+                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-accent text-bg border-none rounded-lg font-body text-[0.85rem] font-semibold no-underline cursor-pointer transition-all hover:opacity-85"
+                >
+                  {t("sidebar.modelEngines")} <ArrowRight size={16} />
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Whisper Pull Modal — styled model list (same as Model Engines page) */}
+      {showWhisperPullModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000] backdrop-blur-sm">
+          <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-[520px] max-h-[85vh] overflow-y-auto p-8 shadow-[0_25px_80px_rgba(0,0,0,0.6)] relative">
+            <button
+              type="button"
+              onClick={() => setShowWhisperPullModal(false)}
+              className="absolute top-4 right-4 bg-transparent border-none text-text-dim text-xl cursor-pointer"
+            >
+              &times;
+            </button>
+            <h3 className="text-xl font-semibold mb-1">{t("modelEngines.pullWhisperModelTitle")}</h3>
+            <p className="text-text-muted text-[0.88rem] font-light mb-5">
+              {t("modelEngines.pullWhisperModelDesc")}
+            </p>
+
+            <div className="flex flex-col gap-2">
+              {[
+                { name: "tiny", speed: "Fastest", quality: "Basic" },
+                { name: "base", speed: "Fast", quality: "Good", recommended: true },
+                { name: "small", speed: "Medium", quality: "Better" },
+                { name: "medium", speed: "Slow", quality: "Great" },
+                { name: "large-v3", speed: "Slowest", quality: "Best" },
+              ]
+                .filter((m) => !whisperModels.some((wm) => wm.name === m.name))
+                .map((m) => {
+                const isDownloading = isWhisperPulling && whisperDownload?.modelName === m.name;
+                const disabledByPull = isWhisperPulling && !isDownloading;
+                return (
+                <div
+                  key={m.name}
+                  className={`flex items-center gap-4 p-4 border rounded-xl transition-all group ${
+                    disabledByPull
+                      ? "border-border opacity-40 cursor-not-allowed"
+                      : whisperPullName === m.name
+                        ? "border-accent bg-accent/10 cursor-pointer"
+                        : "border-border hover:border-border-accent hover:bg-bg-card cursor-pointer"
+                  }`}
+                  onClick={() => { if (!disabledByPull) setWhisperPullName(m.name); }}
+                  role="button"
+                  tabIndex={disabledByPull ? -1 : 0}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !disabledByPull) setWhisperPullName(m.name); }}
+                >
+                  <div className={`w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${whisperPullName === m.name ? "border-accent" : "border-border"}`}>
+                    <div className={`w-2 h-2 rounded-full bg-accent transition-opacity ${whisperPullName === m.name ? "opacity-100" : "opacity-0"}`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[0.95rem] font-semibold">{m.name}</span>
+                      {m.recommended && (
+                        <span className="font-mono text-[0.62rem] text-accent bg-accent/15 px-1.5 py-0.5 rounded tracking-wide uppercase">{t("chat.whisperRecommended")}</span>
+                      )}
+                      {isDownloading && (
+                        <span className="font-mono text-[0.62rem] text-accent bg-accent/15 px-1.5 py-0.5 rounded tracking-wide">{whisperDownload.percent}%</span>
+                      )}
+                    </div>
+                    <div className="font-mono text-[0.72rem] text-text-dim mt-0.5">
+                      {isDownloading
+                        ? whisperDownload.status
+                        : `${m.speed} · ${m.quality}`}
+                    </div>
+                  </div>
+                </div>
+                );
+              })}
+            </div>
+            <div className="mt-5">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!whisperPullName || isWhisperPulling) return;
+                  startWhisperPull(whisperPullName);
+                }}
+                disabled={!whisperPullName || isWhisperPulling}
+                className="w-full px-5 py-3 bg-accent text-bg border-none rounded-lg font-body font-semibold text-[0.9rem] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:opacity-85"
+              >
+                {isWhisperPulling ? t("modelEngines.downloading") : t("modelEngines.pull")}
+              </button>
+            </div>
           </div>
         </div>
       )}

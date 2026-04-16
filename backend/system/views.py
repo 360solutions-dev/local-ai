@@ -694,12 +694,11 @@ class ProviderTestView(APIView):
             return Response({"connected": False, "error": str(e)})
 
 
-class WhisperHealthView(APIView):
-    """Check connectivity to the local Whisper speech-to-text service."""
-
-    permission_classes = [IsAuthenticated]
+class _WhisperBase(APIView):
+    """Shared helpers for all Whisper-related views."""
 
     _WHISPER_URL = os.environ.get("WHISPER_SERVICE_URL", "http://localhost:8090")
+    _API_KEY = os.environ.get("WHISPER_API_KEY", "")
 
     _DOCKER_HOST_MAP = {
         ("localhost", 8090): "whisper",
@@ -715,6 +714,18 @@ class WhisperHealthView(APIView):
             return f"{parsed.scheme}://{docker_host}:{port}"
         return self._WHISPER_URL
 
+    def _headers(self) -> dict:
+        h = {}
+        if self._API_KEY:
+            h["X-API-Key"] = self._API_KEY
+        return h
+
+
+class WhisperHealthView(_WhisperBase):
+    """Check connectivity to the local Whisper speech-to-text service."""
+
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
         health_url = f"{self._resolve_url().rstrip('/')}/health"
         endpoint = self._WHISPER_URL.replace("http://", "").replace("https://", "")
@@ -727,15 +738,124 @@ class WhisperHealthView(APIView):
             return Response({
                 "connected": True,
                 "model": data.get("model", ""),
+                "has_model": data.get("has_model", False),
+                "models": data.get("models", []),
+                "available_models": data.get("available_models", []),
                 "endpoint": endpoint,
                 "latency_ms": latency_ms,
             })
         except http_requests.ConnectionError:
-            return Response({"connected": False, "model": "", "endpoint": endpoint, "error": "Connection refused"})
+            return Response({"connected": False, "model": "", "has_model": False, "models": [], "available_models": [], "endpoint": endpoint, "error": "Connection refused"})
         except http_requests.Timeout:
-            return Response({"connected": False, "model": "", "endpoint": endpoint, "error": "Connection timed out"})
+            return Response({"connected": False, "model": "", "has_model": False, "models": [], "available_models": [], "endpoint": endpoint, "error": "Connection timed out"})
         except Exception as e:
-            return Response({"connected": False, "model": "", "endpoint": endpoint, "error": str(e)})
+            return Response({"connected": False, "model": "", "has_model": False, "models": [], "available_models": [], "endpoint": endpoint, "error": str(e)})
+
+
+class WhisperModelsView(_WhisperBase):
+    """List downloaded whisper models."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        url = f"{self._resolve_url().rstrip('/')}/models"
+        try:
+            resp = http_requests.get(url, headers=self._headers(), timeout=10)
+            resp.raise_for_status()
+            return Response(resp.json())
+        except Exception as e:
+            return Response(
+                {"error": {"message": str(e)}},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+
+class WhisperPullModelView(_WhisperBase):
+    """Download a whisper model by name — streams SSE progress."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from django.http import StreamingHttpResponse
+
+        name = request.data.get("name", "").strip()
+        if not name:
+            return Response(
+                {"error": {"message": "Missing model name."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        url = f"{self._resolve_url().rstrip('/')}/models/pull"
+
+        def stream():
+            try:
+                resp = http_requests.post(
+                    url,
+                    json={"name": name},
+                    headers=self._headers(),
+                    timeout=600,
+                    stream=True,
+                )
+                resp.raise_for_status()
+                # Use chunk_size=None to read data as soon as it arrives
+                # from the upstream socket (avoids buffering multiple SSE
+                # events into a single chunk like iter_lines does).
+                buf = b""
+                for chunk in resp.iter_content(chunk_size=None):
+                    if not chunk:
+                        continue
+                    buf += chunk
+                    while b"\n" in buf:
+                        line, buf = buf.split(b"\n", 1)
+                        line = line.strip()
+                        if not line:
+                            continue
+                        decoded = line.decode()
+                        if decoded.startswith("data: "):
+                            yield decoded + "\n\n"
+                        else:
+                            yield f"data: {decoded}\n\n"
+                # Flush any remaining data in the buffer
+                if buf.strip():
+                    decoded = buf.strip().decode()
+                    if decoded.startswith("data: "):
+                        yield decoded + "\n\n"
+                    else:
+                        yield f"data: {decoded}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'status': 'error', 'error': str(e)})}\n\n"
+
+        response = StreamingHttpResponse(stream(), content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
+
+
+class WhisperDeleteModelView(_WhisperBase):
+    """Delete a downloaded whisper model."""
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, model_name: str):
+        url = f"{self._resolve_url().rstrip('/')}/models/{model_name}"
+        try:
+            resp = http_requests.delete(url, headers=self._headers(), timeout=30)
+            resp.raise_for_status()
+            return Response(resp.json())
+        except http_requests.HTTPError as e:
+            try:
+                detail = e.response.json().get("detail", str(e))
+            except Exception:
+                detail = str(e)
+            return Response(
+                {"error": {"message": detail}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as e:
+            return Response(
+                {"error": {"message": str(e)}},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
 
 
 class FactoryResetView(APIView):
