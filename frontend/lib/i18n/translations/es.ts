@@ -292,6 +292,13 @@ const es: Translations = {
   "modelEngines.whisperService": "Whisper",
   "modelEngines.whisperDescription": "Servicio local de voz a texto con faster-whisper.",
   "modelEngines.whisperType": "Voz a texto",
+  "modelEngines.embeddingModels": "Modelos de embedding",
+  "modelEngines.pullEmbeddingModel": "Descargar modelo de embedding",
+  "modelEngines.pullEmbeddingModelTitle": "Descargar modelo de embedding",
+  "modelEngines.pullEmbeddingModelDesc": "Selecciona un modelo de embedding para descargar. Los modelos de embedding se usan para indexar archivos en el chat con archivos.",
+  "modelEngines.noEmbeddingModels": "No hay modelos de embedding instalados. Haz clic en \"Descargar modelo de embedding\".",
+  "modelEngines.recommended": "Recomendado",
+
   "modelEngines.whisperModels": "Modelos de voz Whisper",
   "modelEngines.pullWhisperModel": "Descargar modelo Whisper",
   "modelEngines.pullWhisperModelTitle": "Descargar modelo Whisper",
@@ -420,12 +427,15 @@ const es: Translations = {
 
   "chat.embeddingModalTitle": "Modelo de embedding requerido",
   "chat.embeddingModalDesc":
-    "La indexación de PDF requiere un modelo de embedding en Ollama. Elige uno para el chat con archivos o descárgalo si falta. Se guardará en Motores de modelo.",
+    "La indexación de archivos requiere un modelo de embedding en Ollama. Elige uno para el chat con archivos o descárgalo si falta. Se guardará en Motores de modelo.",
   "chat.embeddingInstalled": "Instalado localmente",
   "chat.embeddingWillDownload": "Se descargará desde Ollama",
   "chat.embeddingPreparing": "Preparando modelo…",
-  "chat.embeddingContinue": "Continuar e indexar PDF",
+  "chat.embeddingContinue": "Continuar e indexar archivo",
   "chat.embeddingBytesProgress": "{done} / {total} ({remaining} restantes)",
+  "chat.noEmbeddingModel": "Sin modelo de embedding",
+  "chat.noEmbeddingModelDesc": "Se necesita un modelo de embedding para indexar archivos. Descarga uno para comenzar.",
+  "chat.pullEmbeddingModel": "Descargar modelo",
 };
 
 export default es;

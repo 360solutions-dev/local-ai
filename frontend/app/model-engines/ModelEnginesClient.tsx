@@ -20,6 +20,7 @@ import {
   useWhisperHealth,
   useWhisperModels,
   useDeleteWhisperModel,
+  useEmbeddingModelsStatus,
 } from "@/hooks/use-chat";
 import type { ProviderData } from "@/hooks/use-chat";
 import { useDownload } from "@/lib/download-provider";
@@ -77,6 +78,11 @@ export default function ModelEnginesClient() {
   const [whisperDisabled, setWhisperDisabled] = useState(() => typeof window !== "undefined" && localStorage.getItem("whisper_disabled") === "true");
   const whisperConnected = whisperHealth?.connected && !whisperDisabled;
   const [removeTarget, setRemoveTarget] = useState<ProviderData | null>(null);
+
+  // Embedding models section
+  const { data: embeddingStatus } = useEmbeddingModelsStatus();
+  const [showEmbeddingPullModal, setShowEmbeddingPullModal] = useState(false);
+  const [embeddingPullName, setEmbeddingPullName] = useState("");
 
   // Sync model config from API into local state
   useEffect(() => {
@@ -447,6 +453,14 @@ export default function ModelEnginesClient() {
       onSuccess: () => showToastMsg(t("modelEngines.modelRemoved")),
       onError: (err) => showToastMsg(`Failed to remove: ${err.message}`),
     });
+  }
+
+  function handlePullEmbeddingModel() {
+    const name = embeddingPullName.trim();
+    if (!name || isPulling) return;
+    startPull(name);
+    setShowEmbeddingPullModal(false);
+    setEmbeddingPullName("");
   }
 
   function handlePullWhisperModel() {
@@ -894,10 +908,10 @@ export default function ModelEnginesClient() {
           {/* Rows */}
           {modelsLoading || allModelsLoading ? (
             <div className="px-4 py-6 text-center text-text-dim text-[0.85rem]">Loading models...</div>
-          ) : ollamaAllModels.length === 0 ? (
+          ) : ollamaAllModels.filter((m) => !/embed/i.test(m.name)).length === 0 ? (
             <div className="px-4 py-6 text-center text-text-dim text-[0.85rem]">No models installed. Click &quot;Pull Model&quot; to download one.</div>
           ) : (
-            ollamaAllModels.map((m) => {
+            ollamaAllModels.filter((m) => !/embed/i.test(m.name)).map((m) => {
               const embActive =
                 !!modelConfig?.embedding_model &&
                 m.name.split(":")[0].trim().toLowerCase() ===
@@ -932,6 +946,70 @@ export default function ModelEnginesClient() {
             );
             })
           )}
+        </div>
+      </div>
+
+      {/* Embedding Models */}
+      <div className="font-mono text-xs text-text-dim tracking-widest uppercase mb-4 mt-10 flex items-center justify-between">
+        <span>{t("modelEngines.embeddingModels")}</span>
+        {(embeddingStatus?.installed_embedding_models ?? []).length === 0 && (
+          <button
+            onClick={() => { setShowEmbeddingPullModal(true); setEmbeddingPullName("nomic-embed-text"); }}
+            disabled={isPulling}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-bg border-none rounded-md font-body text-[0.78rem] font-semibold cursor-pointer transition-all hover:-translate-y-0.5 normal-case tracking-normal disabled:opacity-50"
+          >
+            {isPulling && download?.modelName && /embed/i.test(download.modelName) ? t("modelEngines.downloading") : <><span className="text-[0.9rem] leading-none">+</span> {t("modelEngines.pullEmbeddingModel")}</>}
+          </button>
+        )}
+      </div>
+      <div className="bg-bg-card border border-border rounded-xl p-6">
+        <div className="w-full">
+          <div className="grid grid-cols-[2fr_1fr_1fr_auto] gap-4 px-4 py-2 font-mono text-[0.68rem] text-text-dim tracking-wide uppercase border-b border-border">
+            <span>{t("modelEngines.model")}</span>
+            <span>{t("modelEngines.size")}</span>
+            <span>{t("modelEngines.status")}</span>
+            <span>{t("modelEngines.actions")}</span>
+          </div>
+          {(embeddingStatus?.installed_embedding_models ?? []).length === 0 ? (
+            <div className="px-4 py-6 text-center text-text-dim text-[0.85rem]">
+              {t("modelEngines.noEmbeddingModels")}
+            </div>
+          ) : (
+            embeddingStatus!.installed_embedding_models.map((m) => {
+              const embActive =
+                !!modelConfig?.embedding_model &&
+                m.name.split(":")[0].trim().toLowerCase() ===
+                  (modelConfig.embedding_model || "").split(":")[0].trim().toLowerCase();
+              return (
+              <div
+                key={m.name}
+                className="grid grid-cols-[2fr_1fr_1fr_auto] gap-4 px-4 py-3 items-center border-b border-border last:border-b-0 transition-colors hover:bg-bg-card-hover"
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[0.9rem] font-medium">{m.name}</span>
+                  {embActive && (
+                    <span className="font-mono text-[0.65rem] text-accent bg-accent/15 px-1.5 py-0.5 rounded">
+                      {t("common.active")}
+                    </span>
+                  )}
+                </div>
+                <span className="font-mono text-[0.82rem] text-text-muted">{m.size}</span>
+                <span className="font-mono text-[0.75rem] text-accent">
+                  {t("modelEngines.ready")}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleRemoveModel(m.name)}
+                    disabled={deleteModelMutation.isPending}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-transparent text-danger border border-danger/30 rounded-md font-body text-[0.78rem] cursor-pointer transition-all hover:bg-danger/10 hover:border-danger disabled:opacity-50"
+                  >
+                    {t("modelEngines.remove")}
+                  </button>
+                </div>
+              </div>
+            );
+            }))
+          }
         </div>
       </div>
 
@@ -1204,6 +1282,71 @@ export default function ModelEnginesClient() {
                 className="w-full px-5 py-3 bg-accent text-bg border-none rounded-lg font-body font-semibold text-[0.9rem] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:opacity-85"
               >
                 {isWhisperPulling ? t("modelEngines.downloading") : t("modelEngines.pull")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Embedding Pull Modal */}
+      {showEmbeddingPullModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000] backdrop-blur-sm">
+          <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-[520px] max-h-[85vh] overflow-y-auto p-8 shadow-[0_25px_80px_rgba(0,0,0,0.6)] relative">
+            <button
+              onClick={() => setShowEmbeddingPullModal(false)}
+              className="absolute top-4 right-4 bg-transparent border-none text-text-dim text-xl cursor-pointer"
+            >
+              &times;
+            </button>
+            <h3 className="text-xl font-semibold mb-1">{t("modelEngines.pullEmbeddingModelTitle")}</h3>
+            <p className="text-text-muted text-[0.88rem] font-light mb-5">
+              {t("modelEngines.pullEmbeddingModelDesc")}
+            </p>
+            <div className="flex flex-col gap-2">
+              {[
+                { name: "nomic-embed-text", desc: "General purpose", recommended: true },
+                { name: "mxbai-embed-large", desc: "High accuracy" },
+                { name: "snowflake-arctic-embed", desc: "Compact & fast" },
+                { name: "all-minilm", desc: "Lightweight" },
+              ]
+                .filter((m) => !(embeddingStatus?.installed_embedding_models ?? []).some((em) => em.name.split(":")[0] === m.name))
+                .map((m) => (
+                <div
+                  key={m.name}
+                  className={`flex items-center gap-4 p-4 border rounded-xl transition-all cursor-pointer ${
+                    embeddingPullName === m.name
+                      ? "border-accent bg-accent/10"
+                      : "border-border hover:border-border-accent hover:bg-bg-card"
+                  }`}
+                  onClick={() => setEmbeddingPullName(m.name)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === "Enter") setEmbeddingPullName(m.name); }}
+                >
+                  <div className={`w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${embeddingPullName === m.name ? "border-accent" : "border-border"}`}>
+                    <div className={`w-2 h-2 rounded-full bg-accent transition-opacity ${embeddingPullName === m.name ? "opacity-100" : "opacity-0"}`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[0.95rem] font-semibold">{m.name}</span>
+                      {m.recommended && (
+                        <span className="font-mono text-[0.62rem] text-accent bg-accent/15 px-1.5 py-0.5 rounded tracking-wide uppercase">{t("modelEngines.recommended")}</span>
+                      )}
+                    </div>
+                    <div className="font-mono text-[0.72rem] text-text-dim mt-0.5">
+                      {m.desc}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5">
+              <button
+                onClick={handlePullEmbeddingModel}
+                disabled={!embeddingPullName || isPulling}
+                className="w-full px-5 py-3 bg-accent text-bg border-none rounded-lg font-body font-semibold text-[0.9rem] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:opacity-85"
+              >
+                {isPulling ? t("modelEngines.downloading") : t("modelEngines.pull")}
               </button>
             </div>
           </div>

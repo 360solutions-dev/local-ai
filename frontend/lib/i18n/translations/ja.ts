@@ -292,6 +292,13 @@ const ja: Translations = {
   "modelEngines.whisperService": "Whisper",
   "modelEngines.whisperDescription": "faster-whisperによるローカル音声テキスト変換サービス。",
   "modelEngines.whisperType": "音声テキスト変換",
+  "modelEngines.embeddingModels": "埋め込みモデル",
+  "modelEngines.pullEmbeddingModel": "埋め込みモデルをダウンロード",
+  "modelEngines.pullEmbeddingModelTitle": "埋め込みモデルをダウンロード",
+  "modelEngines.pullEmbeddingModelDesc": "ダウンロードする埋め込みモデルを選択してください。埋め込みモデルはファイルチャット用のファイルインデックスに使用されます。",
+  "modelEngines.noEmbeddingModels": "埋め込みモデルがインストールされていません。「埋め込みモデルをダウンロード」をクリックしてください。",
+  "modelEngines.recommended": "推奨",
+
   "modelEngines.whisperModels": "Whisper音声モデル",
   "modelEngines.pullWhisperModel": "Whisperモデルをダウンロード",
   "modelEngines.pullWhisperModelTitle": "Whisperモデルをダウンロード",
@@ -420,12 +427,15 @@ const ja: Translations = {
 
   "chat.embeddingModalTitle": "埋め込みモデルが必要です",
   "chat.embeddingModalDesc":
-    "PDFのインデックスにはOllamaの埋め込みモデルが必要です。ファイルチャット用にモデルを選ぶか、未インストールならダウンロードしてください。モデルエンジンに保存されます。",
+    "ファイルのインデックスにはOllamaの埋め込みモデルが必要です。ファイルチャット用にモデルを選ぶか、未インストールならダウンロードしてください。モデルエンジンに保存されます。",
   "chat.embeddingInstalled": "ローカルにインストール済み",
   "chat.embeddingWillDownload": "Ollamaからダウンロードされます",
   "chat.embeddingPreparing": "モデルを準備中…",
-  "chat.embeddingContinue": "続行してPDFをインデックス",
+  "chat.embeddingContinue": "続行してファイルをインデックス",
   "chat.embeddingBytesProgress": "{done} / {total}（残り {remaining}）",
+  "chat.noEmbeddingModel": "埋め込みモデルなし",
+  "chat.noEmbeddingModelDesc": "ファイルのインデックスには埋め込みモデルが必要です。ダウンロードして開始してください。",
+  "chat.pullEmbeddingModel": "モデルをダウンロード",
 };
 
 export default ja;

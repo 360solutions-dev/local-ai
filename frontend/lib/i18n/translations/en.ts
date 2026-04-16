@@ -335,6 +335,13 @@ const en = {
   "modelEngines.whisperService": "Whisper",
   "modelEngines.whisperDescription": "Local speech-to-text service powered by faster-whisper.",
   "modelEngines.whisperType": "Speech-to-Text",
+  "modelEngines.embeddingModels": "Embedding Models",
+  "modelEngines.pullEmbeddingModel": "Pull Embedding Model",
+  "modelEngines.pullEmbeddingModelTitle": "Pull Embedding Model",
+  "modelEngines.pullEmbeddingModelDesc": "Select an embedding model to download. Embedding models are used to index files for chat with files.",
+  "modelEngines.noEmbeddingModels": "No embedding models installed. Click \"Pull Embedding Model\" to download one.",
+  "modelEngines.recommended": "Recommended",
+
   "modelEngines.whisperModels": "Whisper Voice Models",
   "modelEngines.pullWhisperModel": "Pull Whisper Model",
   "modelEngines.pullWhisperModelTitle": "Pull Whisper Model",
@@ -433,12 +440,15 @@ const en = {
 
   "chat.embeddingModalTitle": "Embedding model required",
   "chat.embeddingModalDesc":
-    "PDF indexing needs an embedding model in Ollama. Choose one for file chat, or download it if missing. This will be saved under Model Engines.",
+    "File indexing needs an embedding model in Ollama. Choose one for file chat, or download it if missing. This will be saved under Model Engines.",
   "chat.embeddingInstalled": "Installed locally",
   "chat.embeddingWillDownload": "Will be downloaded from Ollama",
   "chat.embeddingPreparing": "Preparing model…",
-  "chat.embeddingContinue": "Continue & index PDF",
+  "chat.embeddingContinue": "Continue & index file",
   "chat.embeddingBytesProgress": "{done} / {total} ({remaining} remaining)",
+  "chat.noEmbeddingModel": "No embedding model",
+  "chat.noEmbeddingModelDesc": "An embedding model is needed to index files. Pull one to get started.",
+  "chat.pullEmbeddingModel": "Pull Model",
 } as const;
 
 export type TranslationKeys = keyof typeof en;

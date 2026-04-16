@@ -292,6 +292,13 @@ const de: Translations = {
   "modelEngines.whisperService": "Whisper",
   "modelEngines.whisperDescription": "Lokaler Sprache-zu-Text-Dienst mit faster-whisper.",
   "modelEngines.whisperType": "Sprache-zu-Text",
+  "modelEngines.embeddingModels": "Embedding-Modelle",
+  "modelEngines.pullEmbeddingModel": "Embedding-Modell herunterladen",
+  "modelEngines.pullEmbeddingModelTitle": "Embedding-Modell herunterladen",
+  "modelEngines.pullEmbeddingModelDesc": "Wählen Sie ein Embedding-Modell zum Herunterladen. Embedding-Modelle werden zum Indexieren von Dateien für den Datei-Chat verwendet.",
+  "modelEngines.noEmbeddingModels": "Keine Embedding-Modelle installiert. Klicken Sie auf \"Embedding-Modell herunterladen\".",
+  "modelEngines.recommended": "Empfohlen",
+
   "modelEngines.whisperModels": "Whisper-Sprachmodelle",
   "modelEngines.pullWhisperModel": "Whisper-Modell herunterladen",
   "modelEngines.pullWhisperModelTitle": "Whisper-Modell herunterladen",
@@ -420,12 +427,15 @@ const de: Translations = {
 
   "chat.embeddingModalTitle": "Embedding-Modell erforderlich",
   "chat.embeddingModalDesc":
-    "Für die PDF-Indexierung wird ein Embedding-Modell in Ollama benötigt. Wählen Sie eines für den Datei-Chat oder laden Sie es herunter. Es wird unter Modell-Engines gespeichert.",
+    "Für die Datei-Indexierung wird ein Embedding-Modell in Ollama benötigt. Wählen Sie eines für den Datei-Chat oder laden Sie es herunter. Es wird unter Modell-Engines gespeichert.",
   "chat.embeddingInstalled": "Lokal installiert",
   "chat.embeddingWillDownload": "Wird von Ollama heruntergeladen",
   "chat.embeddingPreparing": "Modell wird vorbereitet…",
-  "chat.embeddingContinue": "Weiter & PDF indexieren",
+  "chat.embeddingContinue": "Weiter & Datei indexieren",
   "chat.embeddingBytesProgress": "{done} / {total} ({remaining} verbleibend)",
+  "chat.noEmbeddingModel": "Kein Embedding-Modell",
+  "chat.noEmbeddingModelDesc": "Ein Embedding-Modell wird zum Indexieren von Dateien benötigt. Laden Sie eines herunter.",
+  "chat.pullEmbeddingModel": "Modell herunterladen",
 };
 
 export default de;

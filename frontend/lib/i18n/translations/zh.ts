@@ -292,6 +292,13 @@ const zh: Translations = {
   "modelEngines.whisperService": "Whisper",
   "modelEngines.whisperDescription": "基于faster-whisper的本地语音转文字服务。",
   "modelEngines.whisperType": "语音转文字",
+  "modelEngines.embeddingModels": "嵌入模型",
+  "modelEngines.pullEmbeddingModel": "下载嵌入模型",
+  "modelEngines.pullEmbeddingModelTitle": "下载嵌入模型",
+  "modelEngines.pullEmbeddingModelDesc": "选择要下载的嵌入模型。嵌入模型用于索引文件以供文件聊天使用。",
+  "modelEngines.noEmbeddingModels": "未安装嵌入模型。点击「下载嵌入模型」进行下载。",
+  "modelEngines.recommended": "推荐",
+
   "modelEngines.whisperModels": "Whisper语音模型",
   "modelEngines.pullWhisperModel": "下载Whisper模型",
   "modelEngines.pullWhisperModelTitle": "下载Whisper模型",
@@ -420,12 +427,15 @@ const zh: Translations = {
 
   "chat.embeddingModalTitle": "需要嵌入模型",
   "chat.embeddingModalDesc":
-    "PDF 索引需要 Ollama 中的嵌入模型。请为文件聊天选择一个；若未安装将先下载。将保存在模型引擎中。",
+    "文件索引需要 Ollama 中的嵌入模型。请为文件聊天选择一个；若未安装将先下载。将保存在模型引擎中。",
   "chat.embeddingInstalled": "已在本地安装",
   "chat.embeddingWillDownload": "将从 Ollama 下载",
   "chat.embeddingPreparing": "正在准备模型…",
-  "chat.embeddingContinue": "继续并索引 PDF",
+  "chat.embeddingContinue": "继续并索引文件",
   "chat.embeddingBytesProgress": "{done} / {total}（剩余 {remaining}）",
+  "chat.noEmbeddingModel": "无嵌入模型",
+  "chat.noEmbeddingModelDesc": "索引文件需要嵌入模型。请先下载一个。",
+  "chat.pullEmbeddingModel": "下载模型",
 };
 
 export default zh;

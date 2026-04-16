@@ -30,6 +30,7 @@ import {
   useProviders,
   useWhisperHealth,
   useWhisperModels,
+  useEmbeddingModelsStatus,
   OPTIMISTIC_PREFIX,
   type ChatMessage,
   type EmbeddingModelsStatus,
@@ -37,80 +38,6 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api";
 import { useDownload } from "@/lib/download-provider";
-import { formatBytes } from "@/hooks/use-storage";
-
-/** Same SSE shape as `/api/models/pull` → RAG (see `DownloadProvider`). */
-type EmbeddingPullProgress = {
-  percent: number;
-  completed: number;
-  total: number;
-  status: string;
-};
-
-/** Stream pull until success; invokes `onProgress` with percent and byte counts when available. */
-async function pullOllamaModelStream(
-  name: string,
-  onProgress?: (p: EmbeddingPullProgress) => void,
-): Promise<void> {
-  const resp = await fetch("/api/models/pull", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ name }),
-  });
-  if (!resp.ok) throw new Error(`Pull failed (HTTP ${resp.status})`);
-  const reader = resp.body?.getReader();
-  if (!reader) throw new Error("No response stream");
-  const decoder = new TextDecoder();
-  let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      const jsonStr = trimmed.startsWith("data: ") ? trimmed.slice(6) : trimmed;
-      try {
-        const data = JSON.parse(jsonStr) as {
-          status?: string;
-          error?: string;
-          percent?: number;
-          total?: number;
-          completed?: number;
-        };
-        if (data.status === "error") {
-          throw new Error(data.error || "Pull failed");
-        }
-        if (data.status === "success") {
-          onProgress?.({
-            percent: data.percent ?? 100,
-            completed: 0,
-            total: 0,
-            status: data.status,
-          });
-          continue;
-        }
-        onProgress?.({
-          percent: data.percent ?? 0,
-          completed: data.completed ?? 0,
-          total: data.total ?? 0,
-          status: typeof data.status === "string" ? data.status : "",
-        });
-      } catch (parseErr) {
-        if (
-          parseErr instanceof Error &&
-          (parseErr.message === "Pull failed" || parseErr.message.startsWith("Pull failed"))
-        ) {
-          throw parseErr;
-        }
-      }
-    }
-  }
-}
-
 function modelNameBase(name: string): string {
   return name.split(":")[0].trim().toLowerCase();
 }
@@ -214,6 +141,7 @@ export default function ChatClient() {
   const { data: whisperHealth } = useWhisperHealth();
   const { data: whisperModels = [] } = useWhisperModels();
   const { download, isPulling, startPull, whisperDownload, isWhisperPulling, startWhisperPull } = useDownload();
+  const { data: embeddingModelsStatus } = useEmbeddingModelsStatus();
   const [showPullModal, setShowPullModal] = useState(false);
   const [pullInput, setPullInput] = useState("");
   const [pullError, setPullError] = useState<string | null>(null);
@@ -224,18 +152,13 @@ export default function ChatClient() {
   const [embeddingChoice, setEmbeddingChoice] = useState("nomic-embed-text");
   const [embeddingModalError, setEmbeddingModalError] = useState<string | null>(null);
   const [embeddingBusy, setEmbeddingBusy] = useState(false);
-  const [embeddingPullProgress, setEmbeddingPullProgress] = useState<EmbeddingPullProgress | null>(
-    null,
-  );
   const [embeddingStatusSnapshot, setEmbeddingStatusSnapshot] =
     useState<EmbeddingModelsStatus | null>(null);
+  // Track that we started an embedding pull so the completion effect knows to finish up
+  const embeddingPullPendingRef = useRef<{ model: string; file: File | null } | null>(null);
 
   const processFileForUpload = useCallback(
     async (file: File) => {
-      if (!file.name.toLowerCase().endsWith(".pdf")) {
-        uploadFile.mutate(file);
-        return;
-      }
       const res = await apiGet<EmbeddingModelsStatus>("/api/chat/embedding-models/");
       if (!res.ok || !res.data) {
         uploadFile.mutate(file);
@@ -262,40 +185,41 @@ export default function ChatClient() {
     const s = embeddingStatusSnapshot;
     if (!s) return [];
     const seen = new Set<string>();
-    const out: { label: string; value: string; installed: boolean }[] = [];
+    const out: { label: string; value: string; installed: boolean; recommended: boolean }[] = [];
     for (const m of s.installed_embedding_models) {
       const b = modelNameBase(m.name);
       if (seen.has(b)) continue;
       seen.add(b);
-      out.push({ label: m.name, value: b, installed: true });
+      out.push({ label: m.name, value: b, installed: true, recommended: false });
     }
+    let isFirst = true;
     for (const r of s.recommended) {
       const b = modelNameBase(r);
       if (seen.has(b)) continue;
       seen.add(b);
-      out.push({ label: r, value: b, installed: false });
+      out.push({ label: r, value: b, installed: false, recommended: isFirst });
+      isFirst = false;
     }
     return out;
   }, [embeddingStatusSnapshot]);
 
   const handleEmbeddingModalContinue = async () => {
-    if (!pendingPdfFile) return;
     setEmbeddingModalError(null);
+    const status = embeddingStatusSnapshot;
+    const base = embeddingChoice.trim().toLowerCase();
+    const installedBases = new Set(
+      (status?.installed_embedding_models ?? []).map((m) => modelNameBase(m.name)),
+    );
+    if (!installedBases.has(base)) {
+      // Use global startPull so progress shows on Model Engines page too
+      embeddingPullPendingRef.current = { model: base, file: pendingPdfFile };
+      setEmbeddingBusy(true);
+      startPull(base);
+      return;
+    }
+    // Already installed — just save config and upload
     setEmbeddingBusy(true);
     try {
-      const status = embeddingStatusSnapshot;
-      const base = embeddingChoice.trim().toLowerCase();
-      const installedBases = new Set(
-        (status?.installed_embedding_models ?? []).map((m) => modelNameBase(m.name)),
-      );
-      if (!installedBases.has(base)) {
-        setEmbeddingPullProgress({ percent: 0, completed: 0, total: 0, status: "" });
-        await pullOllamaModelStream(base, (p) => setEmbeddingPullProgress(p));
-        setEmbeddingPullProgress(null);
-        await queryClient.invalidateQueries({ queryKey: ["chat", "models"] });
-        await queryClient.invalidateQueries({ queryKey: ["chat", "models", "all"] });
-        await queryClient.invalidateQueries({ queryKey: ["chat", "embedding-models"] });
-      }
       const ollamaProvider = providers.find((p) => p.name === "Ollama");
       await updateModelConfig.mutateAsync({
         embedding_model: base,
@@ -305,14 +229,47 @@ export default function ChatClient() {
       setEmbeddingModalOpen(false);
       setPendingPdfFile(null);
       setEmbeddingStatusSnapshot(null);
-      uploadFile.mutate(file);
+      if (file) {
+        uploadFile.mutate(file);
+      }
     } catch (err) {
       setEmbeddingModalError(err instanceof Error ? err.message : "Failed to prepare embedding model.");
     } finally {
-      setEmbeddingPullProgress(null);
       setEmbeddingBusy(false);
     }
   };
+
+  // When a global embedding pull finishes, save config + upload file
+  const wasEmbeddingPulling = useRef(false);
+  useEffect(() => {
+    if (isPulling && embeddingPullPendingRef.current) {
+      wasEmbeddingPulling.current = true;
+    } else if (!isPulling && wasEmbeddingPulling.current && embeddingPullPendingRef.current) {
+      wasEmbeddingPulling.current = false;
+      const { model, file } = embeddingPullPendingRef.current;
+      embeddingPullPendingRef.current = null;
+      // Save config and upload
+      (async () => {
+        try {
+          const ollamaProvider = providers.find((p) => p.name === "Ollama");
+          await updateModelConfig.mutateAsync({
+            embedding_model: model,
+            embedding_provider_id: ollamaProvider?.id ?? null,
+          });
+          setEmbeddingModalOpen(false);
+          setPendingPdfFile(null);
+          setEmbeddingStatusSnapshot(null);
+          if (file) {
+            uploadFile.mutate(file);
+          }
+        } catch (err) {
+          setEmbeddingModalError(err instanceof Error ? err.message : "Failed to save config.");
+        } finally {
+          setEmbeddingBusy(false);
+        }
+      })();
+    }
+  }, [isPulling, providers, updateModelConfig, uploadFile]);
 
   // `isSwitchingRef` is set to true just before `setActiveChatId` inside
   // handleSend so the ambient chat-switch cleanup effect doesn't nuke the
@@ -346,6 +303,56 @@ export default function ChatClient() {
       setSelectedModel(ollamaModels[0].id);
     }
   }, [selectedModel, ollamaModels]);
+
+  function validateModelName(name: string): string | null {
+    if (!name) return t("modelEngines.modelNameRequired");
+    if (name.length > 200) return t("modelEngines.modelNameTooLong");
+    const pattern = /^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?(\/[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?)?(:[a-zA-Z0-9][a-zA-Z0-9._-]*)?$/;
+    if (!pattern.test(name)) return t("modelEngines.invalidModelName");
+    return null;
+  }
+
+  async function handlePullModel() {
+    const name = pullInput.trim();
+    if (!name || isPulling || isValidating) return;
+
+    const error = validateModelName(name);
+    if (error) {
+      setPullError(error);
+      return;
+    }
+
+    const nameWithTag = name.includes(":") ? name : `${name}:latest`;
+    const nameWithoutTag = name.split(":")[0];
+    const alreadyExists = ollamaModels.some(
+      (m) => m.name === name || m.name === nameWithTag || m.name === nameWithoutTag || m.name.split(":")[0] === nameWithoutTag,
+    );
+    if (alreadyExists) {
+      setPullError(t("modelEngines.modelAlreadyExists"));
+      return;
+    }
+
+    setIsValidating(true);
+    setPullError(null);
+    try {
+      const res = await fetch(`/api/models/validate?name=${encodeURIComponent(name)}`);
+      if (!res.ok) throw new Error(`Validation failed: HTTP ${res.status}`);
+      const data = await res.json();
+      if (!data.valid) {
+        setPullError(data.error || t("modelEngines.modelNotFound"));
+        return;
+      }
+    } catch {
+      // If validation endpoint is unreachable, proceed anyway
+    } finally {
+      setIsValidating(false);
+    }
+
+    setShowPullModal(false);
+    setPullInput("");
+    setPullError(null);
+    startPull(name);
+  }
 
   // Note: we intentionally do NOT auto-select the first conversation. Opening the
   // Chat page should land the user in a fresh "new chat" state (activeChatId = null)
@@ -1054,17 +1061,19 @@ export default function ChatClient() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[0.9rem] font-semibold font-mono truncate">
-                    {selectedModel || t("chat.files")}
+                    {embeddingModelsStatus?.installed
+                      ? embeddingModelsStatus.configured_embedding_model
+                      : t("chat.files")}
                   </span>
-                  {selectedModel ? (
+                  {embeddingModelsStatus?.installed && (
                     <span className="font-mono text-[0.6rem] text-accent bg-accent/15 px-1.5 py-0.5 rounded shrink-0">
                       {t("common.active")}
                     </span>
-                  ) : null}
+                  )}
                 </div>
-                {selectedModel ? (
+                {embeddingModelsStatus?.installed ? (
                   <div className="text-[0.65rem] font-mono text-text-dim truncate mt-0.5">
-                    {t("chat.chatModelSubtitle")}
+                    Ollama
                   </div>
                 ) : null}
               </div>
@@ -1078,46 +1087,96 @@ export default function ChatClient() {
             </button>
           </div>
 
-          <div
-            className={`mx-3 mt-3 p-6 border border-dashed border-border rounded-[10px] text-center cursor-pointer transition-all hover:border-accent hover:bg-accent/15 ${uploadFile.isPending || embeddingBusy ? "opacity-50 pointer-events-none" : ""}`}
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (uploadFile.isPending || embeddingBusy) return;
-              const fl = e.dataTransfer.files;
-              if (!fl?.length) return;
-              Array.from(fl).forEach((f) => {
-                void processFileForUpload(f);
-              });
-            }}
-            role="presentation"
-          >
-            <div className="text-2xl mb-2">{uploadFile.isPending ? "⏳" : "📤"}</div>
-            <div className="text-[0.82rem] text-text-muted font-light">
-              {uploadFile.isPending ? "Uploading & indexing..." : t("chat.dropFiles")}
+          {embeddingModelsStatus && !embeddingModelsStatus.installed ? (
+            <div className="mx-3 mt-3 p-6 border border-dashed border-border rounded-[10px] text-center">
+              {isPulling && download && /embed/i.test(download.modelName) ? (
+                <>
+                  <div className="text-2xl mb-2">⏳</div>
+                  <div className="text-[0.85rem] font-semibold mb-1">{download.modelName}</div>
+                  <div className="w-full h-1.5 bg-border rounded-full overflow-hidden mb-2 mt-3">
+                    <div
+                      className="h-full bg-accent rounded-full transition-all duration-300"
+                      style={{ width: `${download.percent}%` }}
+                    />
+                  </div>
+                  <div className="font-mono text-[0.75rem] text-accent font-semibold">
+                    {download.percent}%
+                  </div>
+                  <div className="font-mono text-[0.65rem] text-text-dim mt-1">
+                    {download.status}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-2xl mb-2">🧩</div>
+                  <div className="text-[0.85rem] font-semibold mb-1">{t("chat.noEmbeddingModel")}</div>
+                  <div className="text-[0.75rem] text-text-dim font-light mb-3">{t("chat.noEmbeddingModelDesc")}</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void (async () => {
+                        const res = await apiGet<EmbeddingModelsStatus>("/api/chat/embedding-models/");
+                        if (!res.ok || !res.data) return;
+                        setEmbeddingStatusSnapshot(res.data);
+                        const fallback =
+                          res.data.recommended[0] || res.data.configured_embedding_model || "nomic-embed-text";
+                        const initial =
+                          (modelConfig?.embedding_model || "").trim() || res.data.configured_embedding_model || fallback;
+                        setEmbeddingChoice(modelNameBase(initial));
+                        setEmbeddingModalError(null);
+                        setPendingPdfFile(null);
+                        setEmbeddingModalOpen(true);
+                      })();
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-accent text-bg border-none rounded-lg font-body text-[0.82rem] font-semibold cursor-pointer transition-all hover:opacity-85"
+                  >
+                    <span className="text-[0.9rem] leading-none">+</span> {t("chat.pullEmbeddingModel")}
+                  </button>
+                </>
+              )}
             </div>
-            <div className="font-mono text-[0.68rem] text-text-dim mt-1">{t("chat.supportedFormats")}</div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              hidden
-              multiple
-              accept=".pdf,.docx,.xlsx,.csv,.txt,.md"
-              onChange={(e) => {
-                const files = e.target.files;
-                if (!files) return;
-                Array.from(files).forEach((file) => {
-                  void processFileForUpload(file);
-                });
-                e.target.value = "";
+          ) : (
+            <div
+              className={`mx-3 mt-3 p-6 border border-dashed border-border rounded-[10px] text-center cursor-pointer transition-all hover:border-accent hover:bg-accent/15 ${uploadFile.isPending || embeddingBusy ? "opacity-50 pointer-events-none" : ""}`}
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
               }}
-            />
-          </div>
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (uploadFile.isPending || embeddingBusy) return;
+                const fl = e.dataTransfer.files;
+                if (!fl?.length) return;
+                Array.from(fl).forEach((f) => {
+                  void processFileForUpload(f);
+                });
+              }}
+              role="presentation"
+            >
+              <div className="text-2xl mb-2">{uploadFile.isPending ? "⏳" : "📤"}</div>
+              <div className="text-[0.82rem] text-text-muted font-light">
+                {uploadFile.isPending ? "Uploading & indexing..." : t("chat.dropFiles")}
+              </div>
+              <div className="font-mono text-[0.68rem] text-text-dim mt-1">{t("chat.supportedFormats")}</div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                hidden
+                multiple
+                accept=".pdf,.docx,.xlsx,.csv,.txt,.md"
+                onChange={(e) => {
+                  const files = e.target.files;
+                  if (!files) return;
+                  Array.from(files).forEach((file) => {
+                    void processFileForUpload(file);
+                  });
+                  e.target.value = "";
+                }}
+              />
+            </div>
+          )}
 
           <div className="flex-1 overflow-y-auto px-3">
             {filesLoading ? (
@@ -1175,14 +1234,42 @@ export default function ChatClient() {
                   Showing models installed in Ollama
                 </p>
               </div>
-              <button type="button" className="bg-transparent border-none text-text-dim cursor-pointer text-xl px-2 py-1 rounded transition-colors hover:text-danger" onClick={() => setModelOverlayOpen(false)}>✕</button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowPullModal(true); setPullError(null); }}
+                  disabled={isPulling}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-bg border-none rounded-lg font-body text-[0.8rem] font-semibold cursor-pointer transition-all hover:opacity-85 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isPulling ? t("modelEngines.downloading") : t("modelEngines.pullModel")}
+                </button>
+                <button type="button" className="bg-transparent border-none text-text-dim cursor-pointer text-xl px-2 py-1 rounded transition-colors hover:text-danger" onClick={() => setModelOverlayOpen(false)}>✕</button>
+              </div>
             </div>
 
-            {ollamaModels.length === 0 ? (
+            {download && (
+              <div className="mb-4 bg-bg-card border border-border rounded-xl p-3">
+                <div className="flex justify-between font-mono text-xs text-text-muted mb-1.5">
+                  <span>{download.status} — {download.modelName}</span>
+                  <span>{download.percent}%</span>
+                </div>
+                <div className="w-full h-1.5 bg-border rounded-full overflow-hidden">
+                  <div className="h-full bg-accent rounded-full transition-all duration-300" style={{ width: `${download.percent}%` }} />
+                </div>
+              </div>
+            )}
+
+            {ollamaModels.length === 0 && !download ? (
               <div className="text-center py-8 text-text-dim">
                 <div className="text-2xl mb-2">🤖</div>
                 <div className="text-[0.85rem]">No models found in Ollama</div>
-                <div className="text-[0.75rem] mt-1">Run: docker compose exec ollama ollama pull llama3.1:8b</div>
+                <button
+                  type="button"
+                  onClick={() => { setShowPullModal(true); setPullError(null); }}
+                  className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-accent text-bg border-none rounded-lg font-body text-[0.85rem] font-semibold cursor-pointer transition-all hover:opacity-85"
+                >
+                  {t("modelEngines.pullModel")}
+                </button>
               </div>
             ) : (
               <div>
@@ -1219,6 +1306,62 @@ export default function ChatClient() {
         </div>
       )}
 
+      {/* Pull Modal */}
+      {showPullModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1001] backdrop-blur-sm">
+          <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-[460px] p-8 shadow-[0_25px_80px_rgba(0,0,0,0.6)] relative">
+            <button
+              onClick={() => setShowPullModal(false)}
+              className="absolute top-4 right-4 bg-transparent border-none text-text-dim text-xl cursor-pointer"
+            >
+              &times;
+            </button>
+            <h3 className="text-xl font-semibold mb-1">{t("modelEngines.pullNewModel")}</h3>
+            <p className="text-text-muted text-[0.88rem] font-light mb-5">
+              {t("modelEngines.pullModelDesc")}{" "}
+              <a
+                href="https://ollama.com/library"
+                target="_blank"
+                rel="noreferrer"
+                className="text-accent"
+              >
+                ollama.com/library
+              </a>
+              .
+            </p>
+            <div className="flex gap-2">
+              <input
+                value={pullInput}
+                onChange={(e) => {
+                  setPullInput(e.target.value);
+                  if (pullError) setPullError(null);
+                }}
+                onKeyDown={(e) => e.key === "Enter" && handlePullModel()}
+                placeholder={t("modelEngines.pullPlaceholder")}
+                className={`flex-1 px-4 py-3 bg-bg-card border rounded-lg text-text font-mono text-[0.88rem] outline-none focus:border-border-focus ${
+                  pullError ? "border-danger" : "border-border"
+                }`}
+              />
+              <button
+                onClick={handlePullModel}
+                disabled={isValidating}
+                className="px-5 py-3 bg-accent text-bg border-none rounded-lg font-body font-semibold text-[0.88rem] cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isValidating ? t("modelEngines.validating") : t("modelEngines.pull")}
+              </button>
+            </div>
+            {pullError && (
+              <div className="font-mono text-[0.78rem] text-danger mt-2">
+                {pullError}
+              </div>
+            )}
+            <div className="font-mono text-[0.72rem] text-text-dim mt-2">
+              {t("modelEngines.popular")}
+            </div>
+          </div>
+        </div>
+      )}
+
       {embeddingModalOpen && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000] backdrop-blur-[8px] animate-[fadeIn_0.3s_ease]">
           <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-[560px] max-h-[90vh] overflow-y-auto p-8 shadow-[0_25px_80px_rgba(0,0,0,0.6)]">
@@ -1237,7 +1380,6 @@ export default function ChatClient() {
                   setPendingPdfFile(null);
                   setEmbeddingStatusSnapshot(null);
                   setEmbeddingModalError(null);
-                  setEmbeddingPullProgress(null);
                 }}
               >
                 ✕
@@ -1250,86 +1392,56 @@ export default function ChatClient() {
               </div>
             )}
 
-            <div className={`space-y-2.5 mb-6 ${embeddingBusy ? "opacity-50 pointer-events-none" : ""}`}>
-              {embeddingChoices.map((c) => (
+            <div className="flex flex-col gap-2 mb-6">
+              {embeddingChoices.map((c) => {
+                const isDownloading = isPulling && download?.modelName === c.value && embeddingChoice === c.value;
+                const disabledByPull = isPulling && !isDownloading;
+                return (
                 <div
                   key={c.value}
                   role="button"
-                  tabIndex={0}
-                  className={`flex items-center gap-4 p-4 border rounded-[10px] cursor-pointer transition-all ${
-                    embeddingChoice === c.value
-                      ? "border-accent bg-accent/15"
-                      : "border-border hover:border-border-accent hover:bg-bg-card"
+                  tabIndex={disabledByPull ? -1 : 0}
+                  className={`flex items-center gap-4 p-4 border rounded-xl transition-all group ${
+                    disabledByPull
+                      ? "border-border opacity-40 cursor-not-allowed"
+                      : embeddingChoice === c.value
+                        ? "border-accent bg-accent/10 cursor-pointer"
+                        : "border-border hover:border-border-accent hover:bg-bg-card cursor-pointer"
                   }`}
-                  onClick={() => setEmbeddingChoice(c.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") setEmbeddingChoice(c.value);
-                  }}
+                  onClick={() => { if (!disabledByPull) setEmbeddingChoice(c.value); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !disabledByPull) setEmbeddingChoice(c.value); }}
                 >
-                  <div
-                    className={`w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                      embeddingChoice === c.value ? "border-accent" : "border-border"
-                    }`}
-                  >
-                    <div
-                      className={`w-2 h-2 rounded-full bg-accent transition-opacity ${
-                        embeddingChoice === c.value ? "opacity-100" : "opacity-0"
-                      }`}
-                    />
+                  <div className={`w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${embeddingChoice === c.value ? "border-accent" : "border-border"}`}>
+                    <div className={`w-2 h-2 rounded-full bg-accent transition-opacity ${embeddingChoice === c.value ? "opacity-100" : "opacity-0"}`} />
                   </div>
-                  <div className="flex-1 text-left">
-                    <div className="text-[0.95rem] font-semibold font-mono">{c.label}</div>
-                    <div className="font-mono text-[0.68rem] text-text-dim mt-0.5">
-                      {c.installed ? t("chat.embeddingInstalled") : t("chat.embeddingWillDownload")}
+                  <div className="flex-1 min-w-0 text-left">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[0.95rem] font-semibold">{c.label}</span>
+                      {c.recommended && !isDownloading && (
+                        <span className="font-mono text-[0.62rem] text-accent bg-accent/15 px-1.5 py-0.5 rounded tracking-wide uppercase">{t("modelEngines.recommended")}</span>
+                      )}
+                      {isDownloading && (
+                        <span className="font-mono text-[0.62rem] text-accent bg-accent/15 px-1.5 py-0.5 rounded tracking-wide">{download.percent}%</span>
+                      )}
+                    </div>
+                    <div className="font-mono text-[0.72rem] text-text-dim mt-0.5">
+                      {isDownloading
+                        ? download.status
+                        : c.installed ? t("chat.embeddingInstalled") : t("chat.embeddingWillDownload")}
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
-
-            {embeddingPullProgress !== null && (
-              <div className="mb-4 bg-bg-card border border-border rounded-xl p-4">
-                <div className="flex justify-between font-mono text-xs text-text-muted mb-2">
-                  <span className="truncate pr-2">
-                    {embeddingPullProgress.status === "success"
-                      ? t("modelEngines.downloadedSuccess", { name: embeddingChoice })
-                      : embeddingPullProgress.status
-                        ? `${embeddingPullProgress.status} — ${embeddingChoice}`
-                        : t("modelEngines.pulling", { name: embeddingChoice })}
-                  </span>
-                  <span className="shrink-0">{embeddingPullProgress.percent}%</span>
-                </div>
-                <div className="h-1.5 bg-bg rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-accent rounded-full transition-all duration-300"
-                    style={{ width: `${embeddingPullProgress.percent}%` }}
-                  />
-                </div>
-                {embeddingPullProgress.total > 0 && (
-                  <div className="mt-2 font-mono text-[0.65rem] text-text-dim">
-                    {t("chat.embeddingBytesProgress", {
-                      done: formatBytes(embeddingPullProgress.completed),
-                      total: formatBytes(embeddingPullProgress.total),
-                      remaining: formatBytes(
-                        Math.max(0, embeddingPullProgress.total - embeddingPullProgress.completed),
-                      ),
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
 
             <button
               type="button"
-              disabled={embeddingBusy || embeddingChoices.length === 0}
-              className="w-full py-3 rounded-lg bg-accent text-bg font-semibold text-[0.9rem] border-none cursor-pointer transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isPulling || embeddingBusy || embeddingChoices.length === 0}
+              className="w-full px-5 py-3 bg-accent text-bg border-none rounded-lg font-body font-semibold text-[0.9rem] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:opacity-85"
               onClick={() => void handleEmbeddingModalContinue()}
             >
-              {embeddingBusy
-                ? embeddingPullProgress !== null
-                  ? `${embeddingPullProgress.percent}%`
-                  : t("chat.embeddingPreparing")
-                : t("chat.embeddingContinue")}
+              {isPulling ? t("modelEngines.downloading") : t("chat.embeddingContinue")}
             </button>
           </div>
         </div>

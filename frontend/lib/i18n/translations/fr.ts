@@ -292,6 +292,13 @@ const fr: Translations = {
   "modelEngines.whisperService": "Whisper",
   "modelEngines.whisperDescription": "Service local de reconnaissance vocale avec faster-whisper.",
   "modelEngines.whisperType": "Voix en texte",
+  "modelEngines.embeddingModels": "Modèles d'embedding",
+  "modelEngines.pullEmbeddingModel": "Télécharger un modèle d'embedding",
+  "modelEngines.pullEmbeddingModelTitle": "Télécharger un modèle d'embedding",
+  "modelEngines.pullEmbeddingModelDesc": "Sélectionnez un modèle d'embedding à télécharger. Les modèles d'embedding sont utilisés pour indexer les fichiers dans le chat avec fichiers.",
+  "modelEngines.noEmbeddingModels": "Aucun modèle d'embedding installé. Cliquez sur \"Télécharger un modèle d'embedding\".",
+  "modelEngines.recommended": "Recommandé",
+
   "modelEngines.whisperModels": "Modèles vocaux Whisper",
   "modelEngines.pullWhisperModel": "Télécharger un modèle Whisper",
   "modelEngines.pullWhisperModelTitle": "Télécharger un modèle Whisper",
@@ -420,12 +427,15 @@ const fr: Translations = {
 
   "chat.embeddingModalTitle": "Modèle d’embedding requis",
   "chat.embeddingModalDesc":
-    "L’indexation des PDF nécessite un modèle d’embedding dans Ollama. Choisissez-en un pour le chat avec fichiers ou téléchargez-le s’il manque. Il sera enregistré dans Moteurs de modèles.",
+    "L’indexation des fichiers nécessite un modèle d’embedding dans Ollama. Choisissez-en un pour le chat avec fichiers ou téléchargez-le s’il manque. Il sera enregistré dans Moteurs de modèles.",
   "chat.embeddingInstalled": "Installé localement",
   "chat.embeddingWillDownload": "Sera téléchargé depuis Ollama",
   "chat.embeddingPreparing": "Préparation du modèle…",
-  "chat.embeddingContinue": "Continuer et indexer le PDF",
+  "chat.embeddingContinue": "Continuer et indexer le fichier",
   "chat.embeddingBytesProgress": "{done} / {total} ({remaining} restants)",
+  "chat.noEmbeddingModel": "Aucun modèle d'embedding",
+  "chat.noEmbeddingModelDesc": "Un modèle d'embedding est nécessaire pour indexer les fichiers. Téléchargez-en un pour commencer.",
+  "chat.pullEmbeddingModel": "Télécharger le modèle",
 };
 
 export default fr;
