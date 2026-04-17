@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTheme } from "@/hooks/use-theme";
 import { useAccentColor, type AccentColor } from "@/hooks/use-accent-color";
 import { useCurrentUser, useUpdateProfile, useChangePassword, useUpdateNotificationPreferences } from "@/hooks/use-auth";
 import { useInstanceInfo, useInstanceSettings, useUpdateInstanceSettings, useExportChatHistory, useExportSettings, useExportAllData, useResetInstance, useDeleteAllData, useFactoryReset } from "@/hooks/use-advanced-settings";
+import { useCheckUpdate, useApplyUpdate, type UpdateInfo } from "@/hooks/use-updates";
 import { useStorageInfo, useDockerUsage, useClearCache, formatBytes } from "@/hooks/use-storage";
 import { SettingsSkeleton } from "@/components/ui/Skeleton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
 import Button from "@/components/ui/Button";
 import { useTranslation, useLanguage, type Locale } from "@/lib/i18n";
+import { RefreshCw, Download, CheckCircle } from "lucide-react";
+import { apiGet } from "@/lib/api";
 
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
@@ -102,6 +105,51 @@ export default function SettingsClient() {
   const deleteAllData = useDeleteAllData();
   const factoryReset = useFactoryReset();
   const [dangerAction, setDangerAction] = useState<null | "reset" | "delete" | "factory">(null);
+
+  // Updates — check for new versions and apply
+  const checkUpdate = useCheckUpdate();
+  const applyUpdate = useApplyUpdate();
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [showUpdateConfirm, setShowUpdateConfirm] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [targetVersion, setTargetVersion] = useState("");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollStartRef = useRef<number>(0);
+
+  // After triggering an update, poll /api/system/info/ every 5s until the
+  // backend comes back with the new version (services restart in between).
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  function startUpdatePolling(version: string) {
+    setIsUpdating(true);
+    setTargetVersion(version);
+    pollStartRef.current = Date.now();
+
+    pollRef.current = setInterval(async () => {
+      // Timeout after 5 minutes
+      if (Date.now() - pollStartRef.current > 300_000) {
+        if (pollRef.current) clearInterval(pollRef.current);
+        setIsUpdating(false);
+        showToast(t("settings.advanced.updateTimeout"));
+        return;
+      }
+      try {
+        const res = await apiGet<{ version: string }>("/api/system/info/");
+        if (res.ok && res.data.version === version) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setIsUpdating(false);
+          setUpdateInfo(null);
+          showToast(t("settings.advanced.updateComplete", { version }));
+        }
+      } catch {
+        // Connection errors expected during restart — keep polling
+      }
+    }, 5000);
+  }
 
   // Storage — real data from backend
   const { data: storageInfo, isLoading: storageLoading } = useStorageInfo();
@@ -489,6 +537,83 @@ export default function SettingsClient() {
             </div>
           </section>
 
+          {/* Software Updates */}
+          <section>
+            <h2 className="text-lg font-semibold mb-4">{t("settings.advanced.softwareUpdates")}</h2>
+            <div className="bg-bg-card border border-border rounded-xl p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[0.92rem] font-medium">{t("settings.advanced.softwareUpdates")}</div>
+                  <div className="text-[0.82rem] text-text-muted font-light">
+                    {isUpdating
+                      ? t("settings.advanced.updatingTo", { version: targetVersion })
+                      : updateInfo?.update_available
+                        ? t("settings.advanced.updateAvailable", { version: updateInfo.latest_version })
+                        : updateInfo && !updateInfo.error
+                          ? t("settings.advanced.upToDate")
+                          : t("settings.advanced.checkForUpdatesDesc")}
+                  </div>
+                </div>
+                {!isUpdating && (
+                  <button
+                    type="button"
+                    disabled={checkUpdate.isPending}
+                    className="flex items-center gap-2 px-4 py-2 bg-transparent text-text-muted border border-border rounded-lg font-body text-[0.85rem] cursor-pointer transition-all hover:border-accent hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() =>
+                      checkUpdate.mutate(undefined, {
+                        onSuccess: (data) => setUpdateInfo(data),
+                        onError: () => showToast(t("settings.advanced.checkFailed")),
+                      })
+                    }
+                  >
+                    <RefreshCw size={15} className={checkUpdate.isPending ? "animate-spin" : ""} />
+                    {checkUpdate.isPending ? t("settings.advanced.checking") : t("settings.advanced.checkForUpdates")}
+                  </button>
+                )}
+              </div>
+
+              {/* Update available — show changelog and install button */}
+              {updateInfo?.update_available && !isUpdating && (
+                <div className="mt-4 pt-4 border-t border-border">
+                  {updateInfo.changelog.length > 0 && (
+                    <>
+                      <div className="text-[0.82rem] text-text-muted mb-2 font-medium">{t("settings.advanced.changelog")}</div>
+                      <ul className="text-[0.82rem] font-mono space-y-1 mb-4 text-text-muted">
+                        {updateInfo.changelog.map((line, i) => (
+                          <li key={i} className="truncate">{line}</li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 px-5 py-2.5 bg-accent text-white border-none rounded-lg font-body text-[0.88rem] font-medium cursor-pointer transition-all hover:opacity-90"
+                    onClick={() => setShowUpdateConfirm(true)}
+                  >
+                    <Download size={16} />
+                    {t("settings.advanced.installUpdate")}
+                  </button>
+                </div>
+              )}
+
+              {/* Updating — spinner and status */}
+              {isUpdating && (
+                <div className="mt-4 pt-4 border-t border-border">
+                  <div className="flex items-center gap-3">
+                    <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                    <span className="text-[0.88rem]">{t("settings.advanced.updatingTo", { version: targetVersion })}</span>
+                  </div>
+                  <p className="text-[0.82rem] text-text-muted mt-2">{t("settings.advanced.updateInProgress")}</p>
+                </div>
+              )}
+
+              {/* Check returned an error */}
+              {updateInfo?.error && !isUpdating && (
+                <div className="mt-3 text-[0.82rem] text-danger">{updateInfo.error}</div>
+              )}
+            </div>
+          </section>
+
           <section>
             <h2 className="text-lg font-semibold mb-4">{t("settings.advanced.logging")}</h2>
             <div className="space-y-4">
@@ -585,6 +710,22 @@ export default function SettingsClient() {
             onConfirm={() => {
               setResettingFactory(true);
               factoryReset.mutate();
+            }}
+          />
+          <ConfirmDialog
+            open={showUpdateConfirm}
+            title={t("settings.advanced.confirmUpdateTitle")}
+            description={t("settings.advanced.confirmUpdateDesc")}
+            confirmLabel={t("settings.advanced.installUpdate")}
+            variant="warning"
+            loading={applyUpdate.isPending}
+            onCancel={() => setShowUpdateConfirm(false)}
+            onConfirm={() => {
+              setShowUpdateConfirm(false);
+              applyUpdate.mutate(undefined, {
+                onSuccess: (data) => startUpdatePolling(data.target_version),
+                onError: () => showToast(t("settings.advanced.updateFailed")),
+              });
             }}
           />
         </div>

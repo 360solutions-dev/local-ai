@@ -77,6 +77,8 @@ services:
       RAG_API_KEY: ${RAG_API_KEY}
       WHISPER_SERVICE_URL: ${WHISPER_SERVICE_URL}
       WHISPER_API_KEY: ${WHISPER_API_KEY}
+      UPDATER_SERVICE_URL: ${UPDATER_SERVICE_URL:-http://updater:8070}
+      UPDATER_API_KEY: ${UPDATER_API_KEY:-defaultkey}
     volumes:
       - ./backend:/app
       # Read-only Docker socket so the storage page can report the project's
@@ -169,6 +171,25 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    networks:
+      - local-ai-net
+
+  updater:
+    build: ./updater
+    container_name: local-ai-updater
+    restart: unless-stopped
+    environment:
+      UPDATER_API_KEY: ${UPDATER_API_KEY:-defaultkey}
+    volumes:
+      # Mount the entire project directory so git can fetch/pull on the host.
+      - .:/project
+      # Read-write Docker socket so we can run docker compose up.
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8070/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     networks:
       - local-ai-net
 

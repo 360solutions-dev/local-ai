@@ -998,6 +998,67 @@ class FactoryResetView(APIView):
         return response
 
 
+# ---------------------------------------------------------------------------
+# Updater service proxy (check-for-updates / apply-update)
+# ---------------------------------------------------------------------------
+
+class _UpdaterBase(APIView):
+    """Shared helpers for updater-related views — same pattern as _WhisperBase."""
+
+    _UPDATER_URL = os.environ.get("UPDATER_SERVICE_URL", "http://updater:8070")
+    _API_KEY = os.environ.get("UPDATER_API_KEY", "")
+
+    def _headers(self) -> dict:
+        h = {}
+        if self._API_KEY:
+            h["X-API-Key"] = self._API_KEY
+        return h
+
+
+class CheckUpdateView(_UpdaterBase):
+    """Check whether a newer version is available."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        url = f"{self._UPDATER_URL.rstrip('/')}/check"
+        try:
+            resp = http_requests.get(url, headers=self._headers(), timeout=60)
+            resp.raise_for_status()
+            return Response(resp.json())
+        except Exception as e:
+            return Response(
+                {
+                    "update_available": False,
+                    "error": f"Update service unavailable: {e}",
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+
+class ApplyUpdateView(_UpdaterBase):
+    """Trigger an update — pulls latest code and rebuilds containers."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not request.data.get("confirm"):
+            return Response(
+                {"error": {"code": "CONFIRMATION_REQUIRED", "message": "Confirm the update."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        url = f"{self._UPDATER_URL.rstrip('/')}/update"
+        try:
+            resp = http_requests.post(url, headers=self._headers(), timeout=30)
+            resp.raise_for_status()
+            return Response(resp.json())
+        except Exception as e:
+            return Response(
+                {"error": {"message": f"Update service unavailable: {e}"}},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+
 class ProviderListCreateView(APIView):
     """List all providers or create a new one."""
 
