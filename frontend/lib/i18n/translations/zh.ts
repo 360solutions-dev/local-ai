@@ -207,9 +207,10 @@ const zh: Translations = {
   "onboarding.allSet": "一切就绪！",
   "onboarding.instanceReady": "您的local-ai实例已准备就绪。",
   "onboarding.adminCreated": "管理员账户已创建",
-  "onboarding.apiConfigured": "API网关已配置",
-  "onboarding.vectorStoreInit": "向量存储已初始化",
+  "onboarding.ollamaConnected": "Ollama已连接",
+  "onboarding.databaseReady": "数据库已就绪",
   "onboarding.fileStorageReady": "文件存储已就绪",
+  "onboarding.whisperConnected": "Whisper服务已连接",
   "onboarding.goToDashboard": "前往仪表盘 →",
 
   "dashboard.welcomeMessage": "欢迎来到仪表盘",
@@ -437,6 +438,9 @@ const zh: Translations = {
   "chat.noEmbeddingModel": "无嵌入模型",
   "chat.noEmbeddingModelDesc": "索引文件需要嵌入模型。请先下载一个。",
   "chat.pullEmbeddingModel": "下载模型",
+  "chat.loadMore": "加载更多",
+  "chat.loadOlderMessages": "加载更早的消息",
+  "chat.loading": "加载中...",
 };
 
 export default zh;

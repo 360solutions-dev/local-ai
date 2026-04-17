@@ -14,8 +14,9 @@ import Sidebar from "@/components/layout/Sidebar";
 import VoiceInput from "@/components/ui/VoiceInput";
 import { useTranslation } from "@/lib/i18n";
 import {
-  useConversations,
+  useFlatConversations,
   useConversationMessages,
+  useFlatMessages,
   useCreateConversation,
   useSendMessage,
   useDeleteConversation,
@@ -119,8 +120,8 @@ export default function ChatClient() {
 
   // API hooks
   const queryClient = useQueryClient();
-  const { data: conversations = [], isLoading: convLoading } = useConversations();
-  const { data: messages = [], isLoading: msgsLoading } = useConversationMessages(activeChatId);
+  const { conversations, isLoading: convLoading, hasNextPage: hasMoreConvs, fetchNextPage: fetchMoreConvs, isFetchingNextPage: isFetchingMoreConvs } = useFlatConversations();
+  const { messages, isLoading: msgsLoading, hasNextPage: hasOlderMsgs, fetchNextPage: fetchOlderMsgs, isFetchingNextPage: isFetchingOlderMsgs } = useFlatMessages(activeChatId);
   const createConversation = useCreateConversation();
   const sendMessage = useSendMessage();
   const [copiedMessageId, setCopiedMessageId] = useState<string | number | null>(null);
@@ -472,17 +473,26 @@ export default function ChatClient() {
     // Remove only the in-flight assistant placeholder ("Thinking...") so the
     // user message stays visible. Per UX requirement: hitting Stop must NOT
     // delete the user's message — they can still copy or edit it.
-    queryClient.setQueryData<ChatMessage[]>(
+    type InfiniteMessages = { pages: { messages: ChatMessage[]; next_cursor: number | null; has_more: boolean }[]; pageParams: (number | null)[] };
+    queryClient.setQueryData<InfiniteMessages>(
       ["chat", "messages", conversationId],
-      (old = []) =>
-        old.filter(
-          (m) =>
-            !(
-              m.role === "assistant" &&
-              typeof m.id === "string" &&
-              (m.id as unknown as string).startsWith(OPTIMISTIC_PREFIX)
+      (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            messages: page.messages.filter(
+              (m) =>
+                !(
+                  m.role === "assistant" &&
+                  typeof m.id === "string" &&
+                  (m.id as unknown as string).startsWith(OPTIMISTIC_PREFIX)
+                ),
             ),
-        ),
+          })),
+        };
+      },
     );
   }
 
@@ -879,6 +889,16 @@ export default function ChatClient() {
                 </div>
               ))
             )}
+            {hasMoreConvs && (
+              <button
+                type="button"
+                className="w-full py-2 mt-1 mb-2 text-[0.78rem] text-accent bg-transparent border border-dashed border-border-accent rounded-lg cursor-pointer transition-all hover:bg-accent/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => fetchMoreConvs()}
+                disabled={isFetchingMoreConvs}
+              >
+                {isFetchingMoreConvs ? t("chat.loading") : t("chat.loadMore")}
+              </button>
+            )}
           </div>
 
           <div className="px-4 py-3 border-t border-border">
@@ -922,6 +942,17 @@ export default function ChatClient() {
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-text-dim text-[0.85rem]">Loading messages...</div>
               </div>
+            )}
+
+            {activeChatId && !msgsLoading && hasOlderMsgs && (
+              <button
+                type="button"
+                className="self-center py-1.5 px-4 mb-2 text-[0.78rem] text-accent bg-transparent border border-dashed border-border-accent rounded-lg cursor-pointer transition-all hover:bg-accent/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => fetchOlderMsgs()}
+                disabled={isFetchingOlderMsgs}
+              >
+                {isFetchingOlderMsgs ? t("chat.loading") : t("chat.loadOlderMessages")}
+              </button>
             )}
 
             {activeChatId && !msgsLoading && messages.length === 0 && (

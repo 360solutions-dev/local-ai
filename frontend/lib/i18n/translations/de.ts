@@ -207,9 +207,10 @@ const de: Translations = {
   "onboarding.allSet": "Alles bereit!",
   "onboarding.instanceReady": "Ihre local-ai Instanz ist einsatzbereit.",
   "onboarding.adminCreated": "Admin-Konto erstellt",
-  "onboarding.apiConfigured": "API-Gateway konfiguriert",
-  "onboarding.vectorStoreInit": "Vektorspeicher initialisiert",
+  "onboarding.ollamaConnected": "Ollama verbunden",
+  "onboarding.databaseReady": "Datenbank bereit",
   "onboarding.fileStorageReady": "Dateispeicher bereit",
+  "onboarding.whisperConnected": "Whisper-Dienst verbunden",
   "onboarding.goToDashboard": "Zum Dashboard →",
 
   "dashboard.welcomeMessage": "Willkommen auf Ihrem Dashboard",
@@ -437,6 +438,9 @@ const de: Translations = {
   "chat.noEmbeddingModel": "Kein Embedding-Modell",
   "chat.noEmbeddingModelDesc": "Ein Embedding-Modell wird zum Indexieren von Dateien benötigt. Laden Sie eines herunter.",
   "chat.pullEmbeddingModel": "Modell herunterladen",
+  "chat.loadMore": "Mehr laden",
+  "chat.loadOlderMessages": "Ältere Nachrichten laden",
+  "chat.loading": "Laden...",
 };
 
 export default de;

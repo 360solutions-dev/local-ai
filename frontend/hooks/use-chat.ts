@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { apiDelete, apiGet, apiPatch, apiPost, apiUpload, apiUploadBlob } from "@/lib/api";
 
 export interface Conversation {
@@ -24,31 +24,60 @@ interface SendMessageResponse {
   ai_error?: string;
 }
 
+interface PaginatedConversations {
+  conversations: Conversation[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
 export function useConversations() {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ["chat", "conversations"],
-    queryFn: async () => {
-      const res = await apiGet<{ conversations: Conversation[] }>(
-        "/api/chat/conversations/",
+    queryFn: async ({ pageParam }: { pageParam: string | null }) => {
+      const params = new URLSearchParams();
+      if (pageParam) params.set("cursor", pageParam);
+      params.set("limit", "30");
+      const res = await apiGet<PaginatedConversations>(
+        `/api/chat/conversations/?${params.toString()}`,
       );
-      if (!res.ok) return [];
-      return res.data.conversations;
+      if (!res.ok) return { conversations: [], next_cursor: null, has_more: false } as PaginatedConversations;
+      return res.data;
     },
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.has_more ? lastPage.next_cursor : undefined,
     refetchOnWindowFocus: true,
   });
 }
 
+/** Flattened conversation list from all loaded pages. */
+export function useFlatConversations() {
+  const query = useConversations();
+  const conversations = query.data?.pages.flatMap((p) => p.conversations) ?? [];
+  return { ...query, conversations };
+}
+
+interface PaginatedMessages {
+  messages: ChatMessage[];
+  next_cursor: number | null;
+  has_more: boolean;
+}
+
 export function useConversationMessages(conversationId: number | null) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ["chat", "messages", conversationId],
-    queryFn: async () => {
-      if (!conversationId) return [];
-      const res = await apiGet<{ messages: ChatMessage[] }>(
-        `/api/chat/conversations/${conversationId}/messages/`,
+    queryFn: async ({ pageParam }: { pageParam: number | null }) => {
+      if (!conversationId) return { messages: [], next_cursor: null, has_more: false } as PaginatedMessages;
+      const params = new URLSearchParams();
+      if (pageParam) params.set("cursor", String(pageParam));
+      params.set("limit", "50");
+      const res = await apiGet<PaginatedMessages>(
+        `/api/chat/conversations/${conversationId}/messages/?${params.toString()}`,
       );
-      if (!res.ok) return [];
-      return res.data.messages;
+      if (!res.ok) return { messages: [], next_cursor: null, has_more: false } as PaginatedMessages;
+      return res.data;
     },
+    initialPageParam: null as number | null,
+    getNextPageParam: (lastPage) => lastPage.has_more ? lastPage.next_cursor : undefined,
     enabled: !!conversationId,
     // Avoid `staleTime: 0`, which causes refetches to fire during an in-flight
     // send and overwrites the optimistic "Thinking..." row before the mutation
@@ -59,6 +88,15 @@ export function useConversationMessages(conversationId: number | null) {
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   });
+}
+
+/** Flattened message list from all loaded pages (older pages first, then newest). */
+export function useFlatMessages(conversationId: number | null) {
+  const query = useConversationMessages(conversationId);
+  // Pages are loaded newest-first (page 0 = latest, page 1 = older, etc.)
+  // Reverse page order so older messages come first, then flatten.
+  const messages = query.data?.pages ? [...query.data.pages].reverse().flatMap((p) => p.messages) : [];
+  return { ...query, messages };
 }
 
 export function useCreateConversation() {
@@ -132,9 +170,10 @@ export function useSendMessage() {
     // duplicate-bubble race that happens when the component keeps a second
     // `pendingMessages` state in parallel with the query cache.
     onMutate: async (variables) => {
+      type InfiniteMessages = { pages: PaginatedMessages[]; pageParams: (number | null)[] };
       const key = ["chat", "messages", variables.conversationId] as const;
       await queryClient.cancelQueries({ queryKey: key });
-      const previous = queryClient.getQueryData<ChatMessage[]>(key) ?? [];
+      const previous = queryClient.getQueryData<InfiniteMessages>(key);
       const stamp = Date.now();
       // Use a high-entropy id so a rapid double-send never collides.
       const nonce = Math.random().toString(36).slice(2, 8);
@@ -159,35 +198,47 @@ export function useSendMessage() {
         turn_id: variables.turn_id ?? null,
         created_at: new Date().toISOString(),
       };
-      queryClient.setQueryData<ChatMessage[]>(key, [
-        ...previous,
-        optimisticUser,
-        optimisticAssistant,
-      ]);
+      // Append optimistic rows to the first page (most recent messages).
+      queryClient.setQueryData<InfiniteMessages>(key, (old) => {
+        const emptyPage: PaginatedMessages = { messages: [], next_cursor: null, has_more: false };
+        const pages = old?.pages?.length ? [...old.pages] : [emptyPage];
+        const pageParams = old?.pageParams?.length ? [...old.pageParams] : [null];
+        // Page 0 = most recent messages — append to its end.
+        pages[0] = { ...pages[0], messages: [...pages[0].messages, optimisticUser, optimisticAssistant] };
+        return { pages, pageParams };
+      });
       return { previous, userId, assistantId };
     },
     onError: (_err, variables, context) => {
       // Roll back to the state before the optimistic insert.
       if (!context) return;
-      queryClient.setQueryData<ChatMessage[]>(
+      type InfiniteMessages = { pages: PaginatedMessages[]; pageParams: (number | null)[] };
+      queryClient.setQueryData<InfiniteMessages>(
         ["chat", "messages", variables.conversationId],
-        context.previous,
+        context.previous ?? undefined,
       );
     },
     onSuccess: (data, variables, context) => {
       // Replace the optimistic rows with the real messages returned by the
       // server. Any concurrent optimistic entries for different turns stay
       // intact.
+      type InfiniteMessages = { pages: PaginatedMessages[]; pageParams: (number | null)[] };
       const key = ["chat", "messages", variables.conversationId] as const;
-      queryClient.setQueryData<ChatMessage[]>(key, (old = []) => {
-        const filtered = context
-          ? old.filter(
+      queryClient.setQueryData<InfiniteMessages>(key, (old) => {
+        if (!old) return old;
+        const pages = old.pages.map((page, i) => {
+          if (i !== 0) return page;
+          let msgs = page.messages;
+          if (context) {
+            msgs = msgs.filter(
               (m) =>
                 (m.id as unknown as string) !== context.userId &&
                 (m.id as unknown as string) !== context.assistantId,
-            )
-          : old;
-        return [...filtered, data.user_message, data.assistant_message];
+            );
+          }
+          return { ...page, messages: [...msgs, data.user_message, data.assistant_message] };
+        });
+        return { ...old, pages };
       });
       queryClient.invalidateQueries({ queryKey: ["chat", "conversations"] });
     },

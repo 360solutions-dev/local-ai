@@ -120,7 +120,13 @@ export function useClearCache() {
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  const value = bytes / Math.pow(1024, i);
+  // Find the right unit: promote to next unit when value >= 1000
+  // (e.g. 1011 MB → 0.99 GB) for cleaner display.
+  let i = Math.floor(Math.log(bytes) / Math.log(1024));
+  let value = bytes / Math.pow(1024, i);
+  if (value >= 1000 && i < units.length - 1) {
+    i++;
+    value = bytes / Math.pow(1024, i);
+  }
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`;
 }

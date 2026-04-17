@@ -164,6 +164,7 @@ export function useFactoryReset() {
       document.cookie = "setup_complete=; path=/; max-age=0";
       document.cookie = "access_token=; path=/; max-age=0";
       document.cookie = "refresh_token=; path=/api/auth/token/refresh/; max-age=0";
+      localStorage.removeItem("whisper_disabled");
       queryClient.cancelQueries();
       queryClient.clear();
       window.location.href = "/onboarding";

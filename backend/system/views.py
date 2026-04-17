@@ -177,7 +177,9 @@ class StorageInfoView(APIView):
             docker_map = {("localhost", 8090): "whisper", ("127.0.0.1", 8090): "whisper"}
             if (hostname, port) in docker_map:
                 whisper_url = f"{parsed.scheme}://{docker_map[(hostname, port)]}:{port}"
-            resp = http_requests.get(f"{whisper_url.rstrip('/')}/models", timeout=5)
+            whisper_api_key = os.environ.get("WHISPER_API_KEY", "")
+            w_headers = {"X-API-Key": whisper_api_key} if whisper_api_key else {}
+            resp = http_requests.get(f"{whisper_url.rstrip('/')}/models", headers=w_headers, timeout=5)
             resp.raise_for_status()
             whisper_models = resp.json().get("models", [])
             breakdown["whisper_models"] = sum(m.get("size", 0) for m in whisper_models)
@@ -627,16 +629,19 @@ class DeleteAllDataView(APIView):
 
         Notification.objects.filter(user=request.user).delete()
 
-        # Reset RAG service (indexed files + vector store)
+        # Reset RAG service (indexed files + vector store) — keep models
         try:
-            rag_url = urljoin(RAG_SERVICE_URL, "/api/reset")
+            rag_url = urljoin(RAG_SERVICE_URL, "/api/reset?delete_models=false")
             http_requests.post(rag_url, headers=_rag_headers(), timeout=30)
         except Exception as e:
             logger.warning("RAG reset failed during delete-all-data: %s", e)
 
+        # Reset instance settings to defaults
         instance = InstanceSettings.get_or_create_singleton()
         instance.request_logging = True
         instance.debug_mode = False
+        instance.max_file_size_mb = 50
+        instance.max_files_per_chat = 10
         instance.save()
 
         return Response({"message": "All data deleted."})
@@ -954,7 +959,36 @@ class FactoryResetView(APIView):
         except Exception as e:
             logger.warning("Failed to list/delete Whisper models during factory reset: %s", e)
 
-        # 7. Delete all users
+        # 7. Reset providers and model config, then re-seed default Ollama
+        ModelConfig.objects.all().delete()
+        Provider.objects.all().delete()
+        ollama_provider = Provider.objects.create(
+            name="Ollama",
+            icon="\U0001F9E0",
+            description="Local model inference with Ollama. Runs on your machine with full privacy.",
+            endpoint=os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434"),
+            type="ollama",
+            is_default=True,
+            is_connected=False,
+        )
+        # Check if Ollama service is reachable
+        try:
+            endpoint = ollama_provider.endpoint.rstrip("/")
+            parsed = urlparse(endpoint)
+            hostname = parsed.hostname or ""
+            port = parsed.port or 80
+            docker_map = {("localhost", 11434): "ollama", ("127.0.0.1", 11434): "ollama"}
+            docker_host = docker_map.get((hostname, port))
+            if docker_host:
+                endpoint = f"{parsed.scheme}://{docker_host}:{port}"
+            resp = http_requests.get(f"{endpoint}/api/tags", timeout=3)
+            resp.raise_for_status()
+            ollama_provider.is_connected = True
+            ollama_provider.save(update_fields=["is_connected"])
+        except Exception:
+            pass
+
+        # 8. Delete all users
         User = get_user_model()
         User.objects.all().delete()
 
@@ -970,6 +1004,19 @@ class ProviderListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        # Self-heal: re-seed default Ollama provider if missing
+        if not Provider.objects.filter(type="ollama").exists():
+            provider = Provider.objects.create(
+                name="Ollama",
+                icon="\U0001F9E0",
+                description="Local model inference with Ollama. Runs on your machine with full privacy.",
+                endpoint=os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434"),
+                type="ollama",
+                is_default=True,
+                is_connected=False,
+            )
+            provider.is_connected = self._check_connection(provider)
+            provider.save(update_fields=["is_connected"])
         providers = Provider.objects.all()
         serializer = ProviderSerializer(providers, many=True)
         return Response({"providers": serializer.data})

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRegister } from "@/hooks/use-auth";
 import { useSystemHealth } from "@/hooks/use-chat";
 import { useTranslation } from "@/lib/i18n";
@@ -9,6 +9,12 @@ import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import ErrorAlert from "@/components/ui/ErrorAlert";
 import InfoCard from "@/components/ui/InfoCard";
+
+interface CheckItem {
+  key: string;
+  label: string;
+  status: "pending" | "checking" | "ok" | "warn";
+}
 
 export default function OnboardingClient() {
   const { t } = useTranslation();
@@ -19,6 +25,59 @@ export default function OnboardingClient() {
 
   const register = useRegister();
   const { data: health, isLoading: healthLoading } = useSystemHealth();
+
+  // Dynamic checks for step 3
+  const [checks, setChecks] = useState<CheckItem[]>([]);
+  const [checksRunning, setChecksRunning] = useState(false);
+
+  useEffect(() => {
+    if (step !== 3 || checksRunning) return;
+    setChecksRunning(true);
+
+    const items: CheckItem[] = [
+      { key: "admin", label: t("onboarding.adminCreated"), status: "pending" },
+      { key: "ollama", label: t("onboarding.ollamaConnected"), status: "pending" },
+      { key: "database", label: t("onboarding.databaseReady"), status: "pending" },
+      { key: "rag", label: t("onboarding.fileStorageReady"), status: "pending" },
+      { key: "whisper", label: t("onboarding.whisperConnected"), status: "pending" },
+    ];
+    setChecks(items);
+
+    // Each check does a live fetch so we don't depend on cached/stale data
+    async function checkService(key: string): Promise<boolean> {
+      try {
+        if (key === "admin") return true;
+        if (key === "ollama" || key === "database" || key === "rag") {
+          const resp = await fetch("/api/rag/health", { credentials: "include" });
+          if (!resp.ok) return false;
+          const data = await resp.json();
+          if (key === "ollama") return data.ollama === true;
+          if (key === "database") return data.database === true;
+          if (key === "rag") return data.status === "ok" || data.status === "degraded";
+        }
+        if (key === "whisper") {
+          const resp = await fetch("/api/system/services/whisper/health/", { credentials: "include" });
+          if (!resp.ok) return false;
+          const data = await resp.json();
+          return data.connected === true;
+        }
+      } catch {
+        return false;
+      }
+      return false;
+    }
+
+    // Run checks sequentially with a short stagger for visual effect
+    async function runChecks() {
+      for (let i = 0; i < items.length; i++) {
+        setChecks((prev) => prev.map((c, j) => j === i ? { ...c, status: "checking" } : c));
+        await new Promise((r) => setTimeout(r, 400));
+        const ok = await checkService(items[i].key);
+        setChecks((prev) => prev.map((c, j) => j === i ? { ...c, status: ok ? "ok" : "warn" } : c));
+      }
+    }
+    runChecks();
+  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const servicesOnline = !healthLoading && health?.ollama && health?.database;
 
@@ -159,7 +218,7 @@ export default function OnboardingClient() {
           </div>
         )}
 
-        {/* Step 3: Success */}
+        {/* Step 3: Success — dynamic health checks */}
         {step === 3 && (
           <div className="animate-[cardIn_0.4s_ease]">
             <div className="w-[72px] h-[72px] rounded-full bg-accent/15 border-2 border-accent flex items-center justify-center text-3xl mb-6 animate-[scaleIn_0.5s_cubic-bezier(0.34,1.56,0.64,1)]">✓</div>
@@ -169,25 +228,32 @@ export default function OnboardingClient() {
             </p>
 
             <div className="mb-8">
-              <div className="flex items-center gap-3 py-2 text-[0.9rem] text-text-muted">
-                <span className="text-accent font-mono text-[0.85rem]">✔</span>
-                <span>{t("onboarding.adminCreated")}</span>
-              </div>
-              <div className="flex items-center gap-3 py-2 text-[0.9rem] text-text-muted">
-                <span className="text-accent font-mono text-[0.85rem]">✔</span>
-                <span>{t("onboarding.apiConfigured")}</span>
-              </div>
-              <div className="flex items-center gap-3 py-2 text-[0.9rem] text-text-muted">
-                <span className="text-accent font-mono text-[0.85rem]">✔</span>
-                <span>{t("onboarding.vectorStoreInit")}</span>
-              </div>
-              <div className="flex items-center gap-3 py-2 text-[0.9rem] text-text-muted">
-                <span className="text-accent font-mono text-[0.85rem]">✔</span>
-                <span>{t("onboarding.fileStorageReady")}</span>
-              </div>
+              {checks.map((check) => (
+                <div key={check.key} className="flex items-center gap-3 py-2.5 text-[0.9rem] text-text-muted">
+                  {check.status === "pending" && (
+                    <span className="w-4 h-4 flex items-center justify-center text-border">○</span>
+                  )}
+                  {check.status === "checking" && (
+                    <span className="w-4 h-4 flex items-center justify-center">
+                      <span className="inline-block w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                    </span>
+                  )}
+                  {check.status === "ok" && (
+                    <span className="w-4 h-4 flex items-center justify-center text-accent font-mono text-[0.85rem]">✔</span>
+                  )}
+                  {check.status === "warn" && (
+                    <span className="w-4 h-4 flex items-center justify-center text-accent-warm font-mono text-[0.85rem]">!</span>
+                  )}
+                  <span className={check.status === "ok" ? "text-text" : check.status === "warn" ? "text-accent-warm" : ""}>{check.label}</span>
+                </div>
+              ))}
             </div>
 
-            <Button className={btnFullWidth} onClick={() => router.push("/dashboard")}>
+            <Button
+              className={btnFullWidth}
+              onClick={() => router.push("/dashboard")}
+              disabled={checks.some((c) => c.status === "pending" || c.status === "checking")}
+            >
               {t("onboarding.goToDashboard")}
             </Button>
           </div>

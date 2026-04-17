@@ -524,8 +524,13 @@ def clear_cache():
 
 
 @app.post("/api/reset", dependencies=[Depends(verify_api_key)])
-def factory_reset():
-    """Delete all indexed files metadata, vector store data, Ollama models, and clear caches."""
+def factory_reset(delete_models: bool = True):
+    """Delete all indexed files metadata, vector store data, and clear caches.
+
+    When *delete_models* is True (default, used by factory-reset) Ollama
+    models are also removed.  Pass ``?delete_models=false`` to only wipe
+    user data (used by "Delete All Data").
+    """
     import shutil
     import urllib.request
 
@@ -545,33 +550,34 @@ def factory_reset():
     # 3. Clear in-memory caches
     invalidate_index_cache()
 
-    # 4. Delete all Ollama models (except the embedding model)
-    try:
-        tags_url = f"{OLLAMA_BASE_URL.rstrip('/')}/api/tags"
-        with urllib.request.urlopen(tags_url, timeout=5) as resp:
-            data = json.loads(resp.read())
-        for m in data.get("models", []):
-            name = m.get("name", "")
-            if not name:
-                continue
-            # Keep the embedding model — it's required for RAG to work
-            if EMBEDDING_MODEL and EMBEDDING_MODEL in name:
-                continue
-            try:
-                delete_url = f"{OLLAMA_BASE_URL.rstrip('/')}/api/delete"
-                payload = json.dumps({"name": name}).encode()
-                req = urllib.request.Request(
-                    delete_url, data=payload,
-                    headers={"Content-Type": "application/json"},
-                    method="DELETE",
-                )
-                urllib.request.urlopen(req, timeout=30)
-            except Exception as e:
-                errors.append(f"Failed to delete model {name}: {e}")
-    except Exception as e:
-        errors.append(f"Failed to list Ollama models: {e}")
+    # 4. Delete all Ollama models (except the embedding model) — only on full reset
+    if delete_models:
+        try:
+            tags_url = f"{OLLAMA_BASE_URL.rstrip('/')}/api/tags"
+            with urllib.request.urlopen(tags_url, timeout=5) as resp:
+                data = json.loads(resp.read())
+            for m in data.get("models", []):
+                name = m.get("name", "")
+                if not name:
+                    continue
+                # Keep the embedding model — it's required for RAG to work
+                if EMBEDDING_MODEL and EMBEDDING_MODEL in name:
+                    continue
+                try:
+                    delete_url = f"{OLLAMA_BASE_URL.rstrip('/')}/api/delete"
+                    payload = json.dumps({"name": name}).encode()
+                    req = urllib.request.Request(
+                        delete_url, data=payload,
+                        headers={"Content-Type": "application/json"},
+                        method="DELETE",
+                    )
+                    urllib.request.urlopen(req, timeout=30)
+                except Exception as e:
+                    errors.append(f"Failed to delete model {name}: {e}")
+        except Exception as e:
+            errors.append(f"Failed to list Ollama models: {e}")
 
-    result = {"message": "Factory reset complete."}
+    result = {"message": "Factory reset complete." if delete_models else "All data deleted."}
     if errors:
         result["warnings"] = errors
     return result

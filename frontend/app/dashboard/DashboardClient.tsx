@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Sidebar from "@/components/layout/Sidebar";
 import { useTranslation } from "@/lib/i18n";
-import { useConversations, useIndexedFiles, useOllamaModels, useSystemHealth } from "@/hooks/use-chat";
+import { useFlatConversations, useIndexedFiles, useOllamaModels, useSystemHealth } from "@/hooks/use-chat";
 
 function StatCard({ label, value, change, valueClass, changeClass }: { label: string; value: string; change: string; valueClass?: string; changeClass?: string }) {
   return (
@@ -55,12 +55,12 @@ function FeatureCard({ href, icon, title, desc, tag, active, comingSoonLabel, ac
 export default function DashboardClient() {
   const { t } = useTranslation();
 
-  const { data: conversations, isLoading: loadingChats } = useConversations();
+  const { conversations, isLoading: loadingChats } = useFlatConversations();
   const { data: files, isLoading: loadingFiles } = useIndexedFiles();
   const { data: models, isLoading: loadingModels } = useOllamaModels();
   const { data: health, isLoading: loadingHealth } = useSystemHealth();
 
-  const totalChats = conversations?.length ?? 0;
+  const totalChats = conversations.length;
   const totalFiles = files?.length ?? 0;
   const totalModels = models?.length ?? 0;
 

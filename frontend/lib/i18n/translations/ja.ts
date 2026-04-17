@@ -207,9 +207,10 @@ const ja: Translations = {
   "onboarding.allSet": "準備完了！",
   "onboarding.instanceReady": "local-aiインスタンスが使用可能になりました。",
   "onboarding.adminCreated": "管理者アカウントを作成しました",
-  "onboarding.apiConfigured": "APIゲートウェイを設定しました",
-  "onboarding.vectorStoreInit": "ベクトルストアを初期化しました",
+  "onboarding.ollamaConnected": "Ollama接続済み",
+  "onboarding.databaseReady": "データベース準備完了",
   "onboarding.fileStorageReady": "ファイルストレージの準備完了",
+  "onboarding.whisperConnected": "Whisperサービス接続済み",
   "onboarding.goToDashboard": "ダッシュボードへ →",
 
   "dashboard.welcomeMessage": "ダッシュボードへようこそ",
@@ -437,6 +438,9 @@ const ja: Translations = {
   "chat.noEmbeddingModel": "埋め込みモデルなし",
   "chat.noEmbeddingModelDesc": "ファイルのインデックスには埋め込みモデルが必要です。ダウンロードして開始してください。",
   "chat.pullEmbeddingModel": "モデルをダウンロード",
+  "chat.loadMore": "もっと読み込む",
+  "chat.loadOlderMessages": "古いメッセージを読み込む",
+  "chat.loading": "読み込み中...",
 };
 
 export default ja;

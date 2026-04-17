@@ -216,9 +216,10 @@ const en = {
   "onboarding.allSet": "You're all set!",
   "onboarding.instanceReady": "Your local-ai instance is ready to use.",
   "onboarding.adminCreated": "Admin account created",
-  "onboarding.apiConfigured": "API gateway configured",
-  "onboarding.vectorStoreInit": "Vector store initialized",
+  "onboarding.ollamaConnected": "Ollama connected",
+  "onboarding.databaseReady": "Database ready",
   "onboarding.fileStorageReady": "File storage ready",
+  "onboarding.whisperConnected": "Whisper service connected",
   "onboarding.goToDashboard": "Go to Dashboard →",
 
   // Dashboard
@@ -450,6 +451,9 @@ const en = {
   "chat.noEmbeddingModel": "No embedding model",
   "chat.noEmbeddingModelDesc": "An embedding model is needed to index files. Pull one to get started.",
   "chat.pullEmbeddingModel": "Pull Model",
+  "chat.loadMore": "Load more",
+  "chat.loadOlderMessages": "Load older messages",
+  "chat.loading": "Loading...",
 } as const;
 
 export type TranslationKeys = keyof typeof en;

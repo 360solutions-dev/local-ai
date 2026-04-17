@@ -1,3 +1,5 @@
+import os
+
 from django.contrib.auth import authenticate
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -6,6 +8,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from core.exceptions import SetupAlreadyComplete
+from system.models import Provider
 
 from .models import User
 from .serializers import (
@@ -72,6 +75,37 @@ class RegisterView(APIView):
             is_staff=True,
             is_superuser=True,
         )
+
+        # Ensure default Ollama provider exists (may be missing after factory reset)
+        if not Provider.objects.filter(type="ollama").exists():
+            from urllib.parse import urlparse
+            import requests as http_requests
+
+            ollama_provider = Provider.objects.create(
+                name="Ollama",
+                icon="\U0001F9E0",
+                description="Local model inference with Ollama. Runs on your machine with full privacy.",
+                endpoint=os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434"),
+                type="ollama",
+                is_default=True,
+                is_connected=False,
+            )
+            # Check if Ollama service is reachable
+            try:
+                endpoint = ollama_provider.endpoint.rstrip("/")
+                parsed = urlparse(endpoint)
+                hostname = parsed.hostname or ""
+                port = parsed.port or 80
+                docker_map = {("localhost", 11434): "ollama", ("127.0.0.1", 11434): "ollama"}
+                docker_host = docker_map.get((hostname, port))
+                if docker_host:
+                    endpoint = f"{parsed.scheme}://{docker_host}:{port}"
+                resp = http_requests.get(f"{endpoint}/api/tags", timeout=3)
+                resp.raise_for_status()
+                ollama_provider.is_connected = True
+                ollama_provider.save(update_fields=["is_connected"])
+            except Exception:
+                pass
 
         response = Response(
             {

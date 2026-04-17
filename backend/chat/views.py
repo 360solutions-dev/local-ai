@@ -104,21 +104,42 @@ class ConversationListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        """List all conversations (newest first)."""
+        """List conversations (newest first) with cursor pagination."""
         _ensure_tables()
+        cursor = request.query_params.get("cursor")
+        limit = min(int(request.query_params.get("limit", 30)), 100)
+
         with connection.cursor() as cur:
-            cur.execute(
-                "SELECT id, title, created_at FROM conversations ORDER BY created_at DESC"
-            )
-            conversations = [
-                {
-                    "id": row[0],
-                    "title": row[1] or "Untitled",
-                    "created_at": row[2].isoformat() if row[2] else None,
-                }
-                for row in cur.fetchall()
-            ]
-        return Response({"conversations": conversations})
+            if cursor:
+                cur.execute(
+                    "SELECT id, title, created_at FROM conversations "
+                    "WHERE created_at < %s ORDER BY created_at DESC LIMIT %s",
+                    [cursor, limit + 1],
+                )
+            else:
+                cur.execute(
+                    "SELECT id, title, created_at FROM conversations "
+                    "ORDER BY created_at DESC LIMIT %s",
+                    [limit + 1],
+                )
+            rows = cur.fetchall()
+
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        conversations = [
+            {
+                "id": row[0],
+                "title": row[1] or "Untitled",
+                "created_at": row[2].isoformat() if row[2] else None,
+            }
+            for row in rows
+        ]
+        next_cursor = conversations[-1]["created_at"] if has_more and conversations else None
+        return Response({
+            "conversations": conversations,
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+        })
 
     def post(self, request):
         """Create a new conversation."""
@@ -184,16 +205,46 @@ class ConversationMessagesView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, conversation_id):
-        """Retrieve all messages for a conversation."""
+        """Retrieve messages for a conversation with cursor pagination.
+
+        Returns the most recent messages first (paginate backwards in time).
+        Use ?cursor=<id> to load older messages before the given message id.
+        Response messages are sorted ascending (oldest first) for display.
+        """
         _ensure_tables()
+        cursor = request.query_params.get("cursor")
+        limit = min(int(request.query_params.get("limit", 50)), 200)
+
         with connection.cursor() as cur:
-            cur.execute(
-                "SELECT id, role, content, sources, turn_id, created_at "
-                "FROM messages WHERE conversation_id = %s ORDER BY created_at ASC",
-                [conversation_id],
-            )
-            messages = [_row_to_message(row) for row in cur.fetchall()]
-        return Response({"messages": messages})
+            if cursor:
+                # Load messages older than the cursor (smaller id)
+                cur.execute(
+                    "SELECT id, role, content, sources, turn_id, created_at "
+                    "FROM messages WHERE conversation_id = %s AND id < %s "
+                    "ORDER BY id DESC LIMIT %s",
+                    [conversation_id, cursor, limit + 1],
+                )
+            else:
+                # Load the most recent messages
+                cur.execute(
+                    "SELECT id, role, content, sources, turn_id, created_at "
+                    "FROM messages WHERE conversation_id = %s "
+                    "ORDER BY id DESC LIMIT %s",
+                    [conversation_id, limit + 1],
+                )
+            rows = cur.fetchall()
+
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        # Reverse so messages are in chronological order (oldest first)
+        rows.reverse()
+        messages = [_row_to_message(row) for row in rows]
+        next_cursor = messages[0]["id"] if has_more and messages else None
+        return Response({
+            "messages": messages,
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+        })
 
     def post(self, request, conversation_id):
         """Send a message: save user message, generate AI response, return both."""

@@ -207,9 +207,10 @@ const fr: Translations = {
   "onboarding.allSet": "Tout est prêt !",
   "onboarding.instanceReady": "Votre instance local-ai est prête à l'emploi.",
   "onboarding.adminCreated": "Compte administrateur créé",
-  "onboarding.apiConfigured": "Passerelle API configurée",
-  "onboarding.vectorStoreInit": "Magasin vectoriel initialisé",
+  "onboarding.ollamaConnected": "Ollama connecté",
+  "onboarding.databaseReady": "Base de données prête",
   "onboarding.fileStorageReady": "Stockage de fichiers prêt",
+  "onboarding.whisperConnected": "Service Whisper connecté",
   "onboarding.goToDashboard": "Aller au tableau de bord →",
 
   "dashboard.welcomeMessage": "Bienvenue sur votre tableau de bord",
@@ -437,6 +438,9 @@ const fr: Translations = {
   "chat.noEmbeddingModel": "Aucun modèle d'embedding",
   "chat.noEmbeddingModelDesc": "Un modèle d'embedding est nécessaire pour indexer les fichiers. Téléchargez-en un pour commencer.",
   "chat.pullEmbeddingModel": "Télécharger le modèle",
+  "chat.loadMore": "Charger plus",
+  "chat.loadOlderMessages": "Charger les anciens messages",
+  "chat.loading": "Chargement...",
 };
 
 export default fr;

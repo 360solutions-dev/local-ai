@@ -33,17 +33,31 @@ class NotificationListView(APIView):
         qs = Notification.objects.filter(user=request.user)
         if request.query_params.get("unread_only") == "true":
             qs = qs.filter(is_read=False)
-        notifications = list(qs[:50])
+
+        cursor = request.query_params.get("cursor")
+        limit = min(int(request.query_params.get("limit", 30)), 100)
+
+        if cursor:
+            qs = qs.filter(created_at__lt=cursor)
+
+        notifications = list(qs[:limit + 1])
+        has_more = len(notifications) > limit
+        notifications = notifications[:limit]
+
         unread_count = Notification.objects.filter(
             user=request.user, is_read=False
         ).only("id").count()
-        # If we already filtered to unread, we know the count from the list
         if request.query_params.get("unread_only") == "true":
-            unread_count = len(notifications)
+            unread_count = len(notifications) + (1 if has_more else 0)
+
         serializer = NotificationSerializer(notifications, many=True)
+        data = serializer.data
+        next_cursor = data[-1]["created_at"] if has_more and data else None
         return Response({
-            "notifications": serializer.data,
+            "notifications": data,
             "unread_count": unread_count,
+            "next_cursor": next_cursor,
+            "has_more": has_more,
         })
 
 

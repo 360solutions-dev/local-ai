@@ -207,9 +207,10 @@ const es: Translations = {
   "onboarding.allSet": "¡Todo listo!",
   "onboarding.instanceReady": "Tu instancia de local-ai está lista para usar.",
   "onboarding.adminCreated": "Cuenta de administrador creada",
-  "onboarding.apiConfigured": "Gateway API configurado",
-  "onboarding.vectorStoreInit": "Almacén de vectores inicializado",
+  "onboarding.ollamaConnected": "Ollama conectado",
+  "onboarding.databaseReady": "Base de datos lista",
   "onboarding.fileStorageReady": "Almacenamiento de archivos listo",
+  "onboarding.whisperConnected": "Servicio Whisper conectado",
   "onboarding.goToDashboard": "Ir al panel →",
 
   "dashboard.welcomeMessage": "Bienvenido a tu panel",
@@ -437,6 +438,9 @@ const es: Translations = {
   "chat.noEmbeddingModel": "Sin modelo de embedding",
   "chat.noEmbeddingModelDesc": "Se necesita un modelo de embedding para indexar archivos. Descarga uno para comenzar.",
   "chat.pullEmbeddingModel": "Descargar modelo",
+  "chat.loadMore": "Cargar más",
+  "chat.loadOlderMessages": "Cargar mensajes anteriores",
+  "chat.loading": "Cargando...",
 };
 
 export default es;

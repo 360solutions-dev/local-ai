@@ -571,7 +571,7 @@ export default function SettingsClient() {
             variant="danger"
             loading={deleteAllData.isPending}
             onCancel={() => setDangerAction(null)}
-            onConfirm={() => deleteAllData.mutate(undefined, { onSuccess: () => { setDangerAction(null); showToast(t("settings.advanced.allDataDeleted")); } })}
+            onConfirm={() => deleteAllData.mutate(undefined, { onSuccess: () => { setLocale("en"); setTheme("dark"); setTimeout(() => setAccentColor("emerald"), 50); setDangerAction(null); showToast(t("settings.advanced.allDataDeleted")); } })}
           />
           <ConfirmDialog
             open={dangerAction === "factory"}
