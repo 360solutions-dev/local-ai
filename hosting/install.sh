@@ -6,7 +6,6 @@ set -euo pipefail
 # ── Configuration ────────────────────────────────────────────────────────────
 BASE_URL="http://get.local-ai.run"            # where install files are hosted
 INSTALL_DIR="${LOCAL_AI_DIR:-$HOME/local-ai}" # override with LOCAL_AI_DIR env var
-CURRENT_TAG="1.0.1"                           # updated on every release
 MIN_DISK_GB=10
 REQUIRED_PORTS=(80 443)
 
@@ -127,35 +126,19 @@ else
   log ".env created"
 fi
 
-# ── 10. Always keep LOCAL_AI_IMAGE_TAG up to date ────────────────────────────
-if grep -q "^LOCAL_AI_IMAGE_TAG=" .env; then
-  EXISTING_TAG=$(grep "^LOCAL_AI_IMAGE_TAG=" .env | cut -d= -f2)
-  if [[ "$EXISTING_TAG" != "$CURRENT_TAG" ]]; then
-    if [[ "$OS" == "Darwin" ]]; then
-      sed -i '' "s/^LOCAL_AI_IMAGE_TAG=.*/LOCAL_AI_IMAGE_TAG=${CURRENT_TAG}/" .env
-    else
-      sed -i "s/^LOCAL_AI_IMAGE_TAG=.*/LOCAL_AI_IMAGE_TAG=${CURRENT_TAG}/" .env
-    fi
-    log "Updated LOCAL_AI_IMAGE_TAG: ${EXISTING_TAG} → ${CURRENT_TAG}"
-  fi
-else
-  echo "LOCAL_AI_IMAGE_TAG=${CURRENT_TAG}" >> .env
-  log "Added LOCAL_AI_IMAGE_TAG=${CURRENT_TAG} to .env"
-fi
-
-# ── 11. Pull images from Docker Hub ──────────────────────────────────────────
+# ── 10. Pull images from Docker Hub ──────────────────────────────────────────
 printf "\n"
 info "Pulling images from Docker Hub (first run takes a few minutes) ..."
 docker compose -f docker-compose.release.yml pull
 log "All images pulled"
 
-# ── 12. Start the stack ───────────────────────────────────────────────────────
+# ── 11. Start the stack ───────────────────────────────────────────────────────
 printf "\n"
 info "Starting Local AI ..."
 docker compose -f docker-compose.release.yml up -d
 log "Stack started"
 
-# ── 13. Wait for the app to be ready ─────────────────────────────────────────
+# ── 12. Wait for the app to be ready ─────────────────────────────────────────
 printf "\n"
 info "Waiting for Local AI to be ready"
 TIMEOUT=120
@@ -172,7 +155,7 @@ until curl -sf http://localhost/api/auth/setup-status/ &>/dev/null; do
 done
 printf "\n"
 
-# ── 14. Done ─────────────────────────────────────────────────────────────────
+# ── 13. Done ─────────────────────────────────────────────────────────────────
 printf "\n${BOLD}${GREEN}  Local AI is ready!${NC}\n\n"
 printf "  Open in your browser:  ${BOLD}http://local-ai.localhost${NC}\n"
 printf "\n"
