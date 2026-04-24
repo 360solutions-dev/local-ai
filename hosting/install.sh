@@ -6,8 +6,9 @@ set -euo pipefail
 # ── Configuration ────────────────────────────────────────────────────────────
 BASE_URL="http://get.local-ai.run"            # where install files are hosted
 INSTALL_DIR="${LOCAL_AI_DIR:-$HOME/local-ai}" # override with LOCAL_AI_DIR env var
-MIN_DISK_GB=10
-REQUIRED_PORTS=(80 443)
+MIN_DISK_GB=50
+MIN_RAM_GB=8
+REQUIRED_PORTS=(80 5433 11434 8501)
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -62,7 +63,22 @@ if command -v df &>/dev/null; then
   fi
 fi
 
-# ── 6. Ports free? ───────────────────────────────────────────────────────────
+# ── 6. RAM check ─────────────────────────────────────────────────────────────
+if [[ "$OS" == "Darwin" ]]; then
+  TOTAL_RAM_GB=$(( $(sysctl -n hw.memsize) / 1024 / 1024 / 1024 ))
+elif [[ -f /proc/meminfo ]]; then
+  TOTAL_RAM_GB=$(( $(grep MemTotal /proc/meminfo | awk '{print $2}') / 1024 / 1024 ))
+fi
+if [[ -n "${TOTAL_RAM_GB:-}" ]]; then
+  if [[ "$TOTAL_RAM_GB" -lt "$MIN_RAM_GB" ]]; then
+    warn "Low RAM: ${TOTAL_RAM_GB}GB detected. At least ${MIN_RAM_GB}GB recommended."
+    warn "Local AI may run slowly or fail to start with less than ${MIN_RAM_GB}GB RAM."
+  else
+    log "RAM OK (${TOTAL_RAM_GB}GB)"
+  fi
+fi
+
+# ── 7. Ports free? ───────────────────────────────────────────────────────────
 PORTS_BLOCKED=()
 for port in "${REQUIRED_PORTS[@]}"; do
   if lsof -iTCP:"$port" -sTCP:LISTEN &>/dev/null 2>&1; then
@@ -77,7 +93,7 @@ else
   log "Required ports (${REQUIRED_PORTS[*]}) are free"
 fi
 
-# ── 7. Create install directory ──────────────────────────────────────────────
+# ── 8. Create install directory ──────────────────────────────────────────────
 if [[ -d "$INSTALL_DIR" ]]; then
   info "Directory $INSTALL_DIR already exists — updating files"
 else
@@ -86,7 +102,7 @@ else
 fi
 cd "$INSTALL_DIR"
 
-# ── 8. Download compose file and Caddyfile (always overwrite — latest version) ─
+# ── 9. Download compose file and Caddyfile (always overwrite — latest version) ─
 info "Downloading docker-compose.release.yml ..."
 curl -fsSL "$BASE_URL/docker-compose.release.yml" -o docker-compose.release.yml
 log "docker-compose.release.yml downloaded"
@@ -95,7 +111,11 @@ info "Downloading Caddyfile ..."
 curl -fsSL "$BASE_URL/Caddyfile" -o Caddyfile
 log "Caddyfile downloaded"
 
-# ── 9. Create .env (never overwrite existing — would destroy user settings) ──
+# Read the current release version from the compose file (no hardcoding needed)
+CURRENT_TAG=$(grep -m1 'LOCAL_AI_IMAGE_TAG:-' docker-compose.release.yml | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+CURRENT_TAG="${CURRENT_TAG:-latest}"
+
+# ── 10. Create .env (never overwrite existing — would destroy user settings) ──
 if [[ -f ".env" ]]; then
   log ".env already exists — keeping your existing settings"
 else
@@ -123,22 +143,29 @@ else
     log "Generated secure secret keys"
   fi
 
+  # Pin the image tag to the version this installer was built for
+  if [[ "$OS" == "Darwin" ]]; then
+    sed -i '' "s/^LOCAL_AI_IMAGE_TAG=.*/LOCAL_AI_IMAGE_TAG=${CURRENT_TAG}/" .env
+  else
+    sed -i "s/^LOCAL_AI_IMAGE_TAG=.*/LOCAL_AI_IMAGE_TAG=${CURRENT_TAG}/" .env
+  fi
+
   log ".env created"
 fi
 
-# ── 10. Pull images from Docker Hub ──────────────────────────────────────────
+# ── 11. Pull images from Docker Hub ──────────────────────────────────────────
 printf "\n"
 info "Pulling images from Docker Hub (first run takes a few minutes) ..."
 docker compose -f docker-compose.release.yml pull
 log "All images pulled"
 
-# ── 11. Start the stack ───────────────────────────────────────────────────────
+# ── 12. Start the stack ───────────────────────────────────────────────────────
 printf "\n"
 info "Starting Local AI ..."
 docker compose -f docker-compose.release.yml up -d
 log "Stack started"
 
-# ── 12. Wait for the app to be ready ─────────────────────────────────────────
+# ── 13. Wait for the app to be ready ─────────────────────────────────────────
 printf "\n"
 info "Waiting for Local AI to be ready"
 TIMEOUT=120
@@ -155,7 +182,7 @@ until curl -sf http://localhost/api/auth/setup-status/ &>/dev/null; do
 done
 printf "\n"
 
-# ── 13. Done ─────────────────────────────────────────────────────────────────
+# ── 14. Done ─────────────────────────────────────────────────────────────────
 printf "\n${BOLD}${GREEN}  Local AI is ready!${NC}\n\n"
 printf "  Open in your browser:  ${BOLD}http://local-ai.localhost${NC}\n"
 printf "\n"

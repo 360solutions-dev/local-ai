@@ -3,6 +3,8 @@
 
 $BASE_URL    = "http://get.local-ai.run"
 $INSTALL_DIR = "$env:USERPROFILE\local-ai"
+$MIN_DISK_GB = 50
+$MIN_RAM_GB  = 8
 
 function Write-OK   { param($msg) Write-Host "✓  $msg" -ForegroundColor Green }
 function Write-Info { param($msg) Write-Host "→  $msg" -ForegroundColor Cyan }
@@ -27,45 +29,54 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 }
 Write-OK "Docker is installed"
 
-# 2. Docker running?
+# 3. Docker running?
 docker info 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-Fail "Docker is not running. Open Docker Desktop, wait for it to start, then re-run."
 }
 Write-OK "Docker daemon is running"
 
-# 3. docker compose available?
+# 4. docker compose available?
 docker compose version 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-Fail "docker compose (v2) not found. Update Docker Desktop to the latest version."
 }
 Write-OK "docker compose is available"
 
-# 4. Disk space (warn if under 10 GB)
+# 5. Disk space (warn if under 50 GB)
 $drive = Split-Path $INSTALL_DIR -Qualifier
 $disk  = Get-PSDrive ($drive.TrimEnd(':')) -ErrorAction SilentlyContinue
 if ($disk) {
     $freeGB = [math]::Round($disk.Free / 1GB, 1)
-    if ($freeGB -lt 10) {
-        Write-Warn "Low disk space: ${freeGB}GB free. At least 10GB recommended."
+    if ($freeGB -lt $MIN_DISK_GB) {
+        Write-Warn "Low disk space: ${freeGB}GB free. At least ${MIN_DISK_GB}GB recommended."
     } else {
         Write-OK "Disk space OK (${freeGB}GB free)"
     }
 }
 
-# 5. Ports free?
+# 6. RAM check (warn if under 8 GB)
+$totalRAM = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
+$totalRAM_GB = [math]::Round($totalRAM / 1GB, 1)
+if ($totalRAM_GB -lt $MIN_RAM_GB) {
+    Write-Warn "Low RAM: ${totalRAM_GB}GB detected. At least ${MIN_RAM_GB}GB recommended."
+} else {
+    Write-OK "RAM OK (${totalRAM_GB}GB)"
+}
+
+# 7. Ports free?
 $blockedPorts = @()
-foreach ($port in @(80, 443)) {
+foreach ($port in @(80, 5433, 11434, 8501)) {
     $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
     if ($conn) { $blockedPorts += $port }
 }
 if ($blockedPorts.Count -gt 0) {
     Write-Warn "Port(s) already in use: $($blockedPorts -join ', '). Local AI may fail to start."
 } else {
-    Write-OK "Required ports (80, 443) are free"
+    Write-OK "Required ports (80, 5433, 11434, 8501) are free"
 }
 
-# 6. Create install directory
+# 8. Create install directory
 if (Test-Path $INSTALL_DIR) {
     Write-Info "Directory $INSTALL_DIR already exists - updating files"
 } else {
@@ -74,7 +85,7 @@ if (Test-Path $INSTALL_DIR) {
 }
 Set-Location $INSTALL_DIR
 
-# 7. Download compose file and Caddyfile
+# 9. Download compose file and Caddyfile
 Write-Info "Downloading docker-compose.release.yml ..."
 Invoke-WebRequest "$BASE_URL/docker-compose.release.yml" -OutFile "docker-compose.release.yml" -UseBasicParsing
 Write-OK "docker-compose.release.yml downloaded"
@@ -83,7 +94,11 @@ Write-Info "Downloading Caddyfile ..."
 Invoke-WebRequest "$BASE_URL/Caddyfile" -OutFile "Caddyfile" -UseBasicParsing
 Write-OK "Caddyfile downloaded"
 
-# 8. Create .env (never overwrite existing)
+# Read version from compose file
+$CURRENT_TAG = (Select-String -Path "docker-compose.release.yml" -Pattern 'LOCAL_AI_IMAGE_TAG:-([0-9]+\.[0-9]+\.[0-9]+)' | Select-Object -First 1).Matches.Groups[1].Value
+if (-not $CURRENT_TAG) { $CURRENT_TAG = "latest" }
+
+# 10. Create .env (never overwrite existing)
 if (Test-Path ".env") {
     Write-OK ".env already exists - keeping your existing settings"
 } else {
@@ -126,7 +141,7 @@ WHISPER_MODEL=base
 
 # Docker Hub images
 LOCAL_AI_IMAGE_PREFIX=aqibbuttportfolio
-LOCAL_AI_IMAGE_TAG=1.0.1
+LOCAL_AI_IMAGE_TAG=$CURRENT_TAG
 
 # Compose profiles
 COMPOSE_PROFILES=container-ollama
@@ -140,19 +155,19 @@ UPDATER_API_KEY=$updaterKey
     Write-OK ".env created"
 }
 
-# 9. Pull images
+# 11. Pull images
 Write-Host ""
 Write-Info "Pulling images from Docker Hub (first run takes a few minutes) ..."
 docker compose -f docker-compose.release.yml pull
 Write-OK "All images pulled"
 
-# 10. Start the stack
+# 12. Start the stack
 Write-Host ""
 Write-Info "Starting Local AI ..."
 docker compose -f docker-compose.release.yml up -d
 Write-OK "Stack started"
 
-# 11. Wait for app to be ready
+# 13. Wait for app to be ready
 Write-Host ""
 Write-Info "Waiting for Local AI to be ready"
 $timeout = 120
@@ -173,7 +188,7 @@ if (-not $ready) {
     Write-Warn "  docker compose -f $INSTALL_DIR\docker-compose.release.yml logs"
 }
 
-# 12. Done
+# 14. Done
 Write-Host ""
 Write-Host "  Local AI is ready!" -ForegroundColor Green
 Write-Host ""
