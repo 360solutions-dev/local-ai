@@ -4,6 +4,7 @@ const backendUrl = process.env.BACKEND_URL!;
 const ragUrl = process.env.RAG_URL!;
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   skipTrailingSlashRedirect: true,
   experimental: {
     proxyTimeout: 300_000, // 5 minutes — LLM on CPU can be slow

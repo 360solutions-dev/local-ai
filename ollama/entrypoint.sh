@@ -10,11 +10,6 @@ until ollama list >/dev/null 2>&1; do
 done
 echo "Ollama server is ready."
 
-# Pull only the embedding model (required for RAG)
-echo "Pulling nomic-embed-text (embedding model)..."
-ollama pull nomic-embed-text
-
-echo "Embedding model is ready. Pull your preferred LLM manually: ollama pull <model-name>"
 
 # Keep the server running in the foreground
 wait

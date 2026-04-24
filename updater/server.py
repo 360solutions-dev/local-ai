@@ -1,6 +1,6 @@
 """
 Updater service — a tiny stdlib-only HTTP server that checks for new
-versions (git tags) and triggers updates (git pull + docker compose up).
+versions (Docker Hub tags) and triggers updates (docker compose pull + up).
 
 Endpoints
 ---------
@@ -13,57 +13,22 @@ import json
 import os
 import subprocess
 import re
+import urllib.request
+import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 API_KEY = os.environ.get("UPDATER_API_KEY", "")
+LOCAL_AI_IMAGE_PREFIX = os.environ.get("LOCAL_AI_IMAGE_PREFIX", "aqibbuttportfolio")
+DOCKER_HUB_IMAGE = f"{LOCAL_AI_IMAGE_PREFIX}/local-ai-django"
+CURRENT_VERSION_ENV = os.environ.get("CURRENT_VERSION", "")
 PROJECT_DIR = os.environ.get("PROJECT_DIR", "/project")
 PORT = int(os.environ.get("UPDATER_PORT", "8070"))
 
-# Cached HTTPS URL — computed once on first use
-_HTTPS_URL: str | None = None
-
-
-def _run(cmd: list[str], timeout: int = 30) -> tuple[str, str, int]:
-    """Run a command and return (stdout, stderr, returncode)."""
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    return proc.stdout.strip(), proc.stderr.strip(), proc.returncode
-
-
-def _get_https_url() -> str | None:
-    """Get the HTTPS version of the origin remote URL.
-
-    The host uses SSH (git@github.com:org/repo.git) for push, but the
-    updater container has no SSH keys. For a public repo, HTTPS works
-    without credentials. This converts SSH → HTTPS automatically.
-    """
-    global _HTTPS_URL
-    if _HTTPS_URL is not None:
-        return _HTTPS_URL
-
-    out, _, rc = _run(["git", "-C", PROJECT_DIR, "remote", "get-url", "origin"])
-    if rc != 0 or not out:
-        return None
-    url = out.strip()
-
-    if url.startswith("https://"):
-        _HTTPS_URL = url
-    else:
-        # git@github.com:org/repo.git → https://github.com/org/repo.git
-        m = re.match(r"git@([^:]+):(.+)", url)
-        if m:
-            _HTTPS_URL = f"https://{m.group(1)}/{m.group(2)}"
-
-    return _HTTPS_URL
-
-
-def _current_branch() -> str:
-    """Return the active git branch name."""
-    out, _, rc = _run(["git", "-C", PROJECT_DIR, "rev-parse", "--abbrev-ref", "HEAD"])
-    return out if rc == 0 else "unknown"
-
 
 def _current_version() -> str:
-    """Read VERSION from Django settings.py as the single source of truth."""
+    if CURRENT_VERSION_ENV:
+        return CURRENT_VERSION_ENV
+    # Dev fallback: read from source-mounted settings.py
     settings_path = os.path.join(PROJECT_DIR, "backend", "config", "settings.py")
     try:
         with open(settings_path) as f:
@@ -76,32 +41,37 @@ def _current_version() -> str:
     return "0.0.0"
 
 
-def _latest_remote_tag() -> str | None:
-    """Return the highest semver tag on the remote (after git fetch)."""
-    https_url = _get_https_url()
-    if not https_url:
+def _latest_docker_hub_version() -> str | None:
+    """Return the highest semver tag published on Docker Hub for DOCKER_HUB_IMAGE."""
+    if not DOCKER_HUB_IMAGE or "/" not in DOCKER_HUB_IMAGE:
         return None
 
-    # Use HTTPS URL directly so we don't need SSH keys
-    _run(["git", "-C", PROJECT_DIR, "fetch", https_url, "--tags", "--force"], timeout=60)
-
-    out, _, rc = _run(
-        ["git", "-C", PROJECT_DIR, "tag", "-l", "v*", "--sort=-version:refname"]
+    namespace, repository = DOCKER_HUB_IMAGE.split("/", 1)
+    url = (
+        f"https://hub.docker.com/v2/repositories/{namespace}/{repository}"
+        f"/tags/?page_size=100&ordering=-last_updated"
     )
-    if rc != 0 or not out:
+
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode())
+    except (urllib.error.URLError, json.JSONDecodeError):
         return None
-    return out.splitlines()[0].lstrip("v")
 
+    semver_pattern = re.compile(r'^v?(\d+\.\d+\.\d+)$')
+    versions: list[str] = []
+    for tag in data.get("results", []):
+        name = tag.get("name", "")
+        m = semver_pattern.match(name)
+        if m:
+            versions.append(m.group(1))
 
-def _changelog(current: str, latest: str) -> list[str]:
-    """Return commit subjects between current and latest version tags."""
-    out, _, rc = _run([
-        "git", "-C", PROJECT_DIR, "log",
-        f"v{current}..v{latest}", "--oneline", "--no-merges",
-    ])
-    if rc != 0 or not out:
-        return []
-    return out.splitlines()[:20]
+    if not versions:
+        return None
+
+    versions.sort(key=lambda v: tuple(int(x) for x in v.split(".")), reverse=True)
+    return versions[0]
 
 
 def _compare_versions(current: str, latest: str) -> bool:
@@ -144,29 +114,25 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 current = _current_version()
-                latest = _latest_remote_tag()
-                branch = _current_branch()
+                latest = _latest_docker_hub_version()
 
                 if latest is None:
                     self._send_json({
                         "current_version": current,
                         "latest_version": current,
                         "update_available": False,
-                        "branch": branch,
                         "changelog": [],
-                        "error": "Could not fetch remote tags. Check your internet connection.",
+                        "error": "Could not fetch tags from Docker Hub. Check your internet connection.",
                     })
                     return
 
                 available = _compare_versions(current, latest)
-                changelog = _changelog(current, latest) if available else []
 
                 self._send_json({
                     "current_version": current,
                     "latest_version": latest,
                     "update_available": available,
-                    "branch": branch,
-                    "changelog": changelog,
+                    "changelog": [],
                     "error": None,
                 })
             except Exception as e:
@@ -187,7 +153,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 current = _current_version()
-                latest = _latest_remote_tag()
+                latest = _latest_docker_hub_version()
 
                 if latest is None or not _compare_versions(current, latest):
                     self._send_json({
@@ -196,7 +162,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
 
                 subprocess.Popen(
-                    ["/app/update.sh", PROJECT_DIR],
+                    ["/app/update.sh", PROJECT_DIR, latest],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     start_new_session=True,

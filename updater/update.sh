@@ -2,30 +2,23 @@
 set -e
 
 PROJECT_DIR="${1:-/project}"
+NEW_VERSION="${2:-}"
+
 cd "$PROJECT_DIR"
 
-# Detect the current branch
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
+# Pull new images first — only update .env if pull succeeds.
+LOCAL_AI_IMAGE_TAG="${NEW_VERSION:-latest}" \
+  docker compose -f "$PROJECT_DIR/docker-compose.release.yml" pull
 
-# Convert SSH remote to HTTPS (public repo, no credentials needed)
-REMOTE_URL=$(git remote get-url origin)
-case "$REMOTE_URL" in
-  git@*)
-    # git@github.com:org/repo.git → https://github.com/org/repo.git
-    HTTPS_URL=$(echo "$REMOTE_URL" | sed 's|git@\([^:]*\):|https://\1/|')
-    ;;
-  *)
-    HTTPS_URL="$REMOTE_URL"
-    ;;
-esac
+# Persist the new version tag in .env so the stack stays on the right tag
+# after the updater itself restarts.
+if [ -n "$NEW_VERSION" ] && [ -f "$PROJECT_DIR/.env" ]; then
+  if grep -q "^LOCAL_AI_IMAGE_TAG=" "$PROJECT_DIR/.env"; then
+    sed -i "s/^LOCAL_AI_IMAGE_TAG=.*/LOCAL_AI_IMAGE_TAG=${NEW_VERSION}/" "$PROJECT_DIR/.env"
+  else
+    printf '\nLOCAL_AI_IMAGE_TAG=%s\n' "$NEW_VERSION" >> "$PROJECT_DIR/.env"
+  fi
+fi
 
-# Preserve local edits (.env tweaks, etc.) so git pull won't conflict
-git stash 2>/dev/null || true
-
-# Fast-forward only — if local commits exist, fail safely instead of merging
-git pull "$HTTPS_URL" "$BRANCH" --ff-only
-
-# Rebuild changed images and restart every container (detached).
-# This command is sent to the Docker daemon via the socket; even if
-# this container is killed mid-restart, the daemon finishes the job.
-docker compose up -d --build
+LOCAL_AI_IMAGE_TAG="${NEW_VERSION:-latest}" \
+  docker compose -f "$PROJECT_DIR/docker-compose.release.yml" up -d
