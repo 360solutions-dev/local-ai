@@ -163,6 +163,11 @@ const ja: Translations = {
   "settings.advanced.checkFailed": "アップデートを確認できませんでした。",
   "settings.saved": "設定を保存しました。",
 
+  "updateNotifier.title": "アップデートが利用可能",
+  "updateNotifier.message": "バージョン {version} のインストール準備ができました。",
+  "updateNotifier.viewAction": "アップデートを表示",
+  "updateNotifier.dismiss": "閉じる",
+
   "login.welcomeBack": "おかえりなさい",
   "login.signInSubtitle": "local-aiインスタンスにサインイン",
   "login.email": "メールアドレス",

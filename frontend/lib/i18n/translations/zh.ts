@@ -163,6 +163,11 @@ const zh: Translations = {
   "settings.advanced.checkFailed": "无法检查更新。",
   "settings.saved": "设置保存成功。",
 
+  "updateNotifier.title": "更新可用",
+  "updateNotifier.message": "版本 {version} 已准备好安装。",
+  "updateNotifier.viewAction": "查看更新",
+  "updateNotifier.dismiss": "关闭",
+
   "login.welcomeBack": "欢迎回来",
   "login.signInSubtitle": "登录到您的local-ai实例",
   "login.email": "邮箱",

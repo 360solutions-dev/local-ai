@@ -170,6 +170,12 @@ const en = {
   "settings.advanced.checkFailed": "Could not check for updates.",
   "settings.saved": "Settings saved successfully.",
 
+  // Update Notifier (global banner)
+  "updateNotifier.title": "Update Available",
+  "updateNotifier.message": "Version {version} is ready to install.",
+  "updateNotifier.viewAction": "View Update",
+  "updateNotifier.dismiss": "Dismiss",
+
   // Login
   "login.welcomeBack": "Welcome back",
   "login.signInSubtitle": "Sign in to your local-ai instance",

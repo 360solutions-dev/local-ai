@@ -18,7 +18,7 @@ import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 API_KEY = os.environ.get("UPDATER_API_KEY", "")
-LOCAL_AI_IMAGE_PREFIX = os.environ.get("LOCAL_AI_IMAGE_PREFIX", "aqibbuttportfolio")
+LOCAL_AI_IMAGE_PREFIX = os.environ.get("LOCAL_AI_IMAGE_PREFIX", "alinawaz360")
 DOCKER_HUB_IMAGE = f"{LOCAL_AI_IMAGE_PREFIX}/local-ai-django"
 CURRENT_VERSION_ENV = os.environ.get("CURRENT_VERSION", "")
 PROJECT_DIR = os.environ.get("PROJECT_DIR", "/project")

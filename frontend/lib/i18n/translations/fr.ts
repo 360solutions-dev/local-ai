@@ -163,6 +163,11 @@ const fr: Translations = {
   "settings.advanced.checkFailed": "Impossible de vérifier les mises à jour.",
   "settings.saved": "Paramètres enregistrés avec succès.",
 
+  "updateNotifier.title": "Mise à jour disponible",
+  "updateNotifier.message": "La version {version} est prête à être installée.",
+  "updateNotifier.viewAction": "Voir la mise à jour",
+  "updateNotifier.dismiss": "Ignorer",
+
   "login.welcomeBack": "Bon retour",
   "login.signInSubtitle": "Connectez-vous à votre instance local-ai",
   "login.email": "E-mail",

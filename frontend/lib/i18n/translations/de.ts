@@ -163,6 +163,11 @@ const de: Translations = {
   "settings.advanced.checkFailed": "Update-Prüfung fehlgeschlagen.",
   "settings.saved": "Einstellungen erfolgreich gespeichert.",
 
+  "updateNotifier.title": "Update verfügbar",
+  "updateNotifier.message": "Version {version} ist bereit zur Installation.",
+  "updateNotifier.viewAction": "Update anzeigen",
+  "updateNotifier.dismiss": "Verwerfen",
+
   "login.welcomeBack": "Willkommen zurück",
   "login.signInSubtitle": "Melden Sie sich bei Ihrer local-ai Instanz an",
   "login.email": "E-Mail",

@@ -21,7 +21,7 @@ if [[ -f "$ROOT/.env" ]]; then
   set +a
 fi
 
-PREFIX="${LOCAL_AI_IMAGE_PREFIX:-aqibbuttportfolio}"
+PREFIX="${LOCAL_AI_IMAGE_PREFIX:-alinawaz360}"
 TAG="${LOCAL_AI_IMAGE_TAG:-1.0.1}"
 PLATFORMS="linux/amd64,linux/arm64"
 

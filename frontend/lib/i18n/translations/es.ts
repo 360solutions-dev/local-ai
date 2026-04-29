@@ -163,6 +163,11 @@ const es: Translations = {
   "settings.advanced.checkFailed": "No se pudo buscar actualizaciones.",
   "settings.saved": "Configuración guardada correctamente.",
 
+  "updateNotifier.title": "Actualización disponible",
+  "updateNotifier.message": "La versión {version} está lista para instalar.",
+  "updateNotifier.viewAction": "Ver actualización",
+  "updateNotifier.dismiss": "Descartar",
+
   "login.welcomeBack": "Bienvenido de nuevo",
   "login.signInSubtitle": "Inicia sesión en tu instancia de local-ai",
   "login.email": "Correo electrónico",

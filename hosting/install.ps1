@@ -140,7 +140,7 @@ WHISPER_API_KEY=$whisperKey
 WHISPER_MODEL=base
 
 # Docker Hub images
-LOCAL_AI_IMAGE_PREFIX=aqibbuttportfolio
+LOCAL_AI_IMAGE_PREFIX=alinawaz360
 LOCAL_AI_IMAGE_TAG=$CURRENT_TAG
 
 # Compose profiles
