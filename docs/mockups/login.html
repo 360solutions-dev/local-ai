@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>local-ai.run — Sign In</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #0a0a0f; --bg-elevated: #111118; --bg-card: #16161f;
+  --border: #23233a; --border-accent: #2d4a3e; --border-focus: #34d399;
+  --text: #e8e8ef; --text-muted: #7a7a8f; --text-dim: #50506a;
+  --accent: #34d399; --accent-glow: rgba(52, 211, 153, 0.15); --accent-glow-strong: rgba(52, 211, 153, 0.3);
+  --accent-secondary: #22d3ee; --danger: #ef4444;
+  --font-body: 'Outfit', sans-serif; --font-mono: 'JetBrains Mono', monospace;
+}
+html { scroll-behavior: smooth; }
+body { font-family: var(--font-body); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+body::before { content:''; position:fixed; inset:0; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E"); pointer-events:none; z-index:9999; }
+
+.ambient { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:800px; height:800px; background:radial-gradient(ellipse, var(--accent-glow) 0%, transparent 65%); pointer-events:none; z-index:0; }
+
+.login-container { position:relative; z-index:1; width:100%; max-width:420px; padding:2rem; }
+
+/* ── Logo ── */
+.login-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 1.2rem;
+  color: var(--accent);
+  margin-bottom: 2.5rem;
+  letter-spacing: 0.05em;
+}
+.login-logo svg { width: 32px; height: 32px; }
+.logo-dash { font-weight:400; color:var(--text-dim); animation:cursorBlink 1.2s step-end infinite; }
+@keyframes cursorBlink { 0%,100%{color:var(--text-dim)} 50%{color:#e8e8ef} }
+
+/* ── Card ── */
+.login-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.4);
+  animation: cardIn 0.5s ease;
+}
+@keyframes cardIn { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+
+.login-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 0.3rem;
+}
+
+.login-subtitle {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 300;
+  margin-bottom: 1.8rem;
+}
+
+/* ── Form ── */
+.form-group { margin-bottom: 1.2rem; }
+
+.form-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 0.4rem;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.form-input::placeholder { color: var(--text-dim); }
+.form-input:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--accent-glow); }
+.form-input.error { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(239,68,68,0.1); }
+
+.password-wrapper { position: relative; }
+.password-toggle { position:absolute; right:0.75rem; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:0.85rem; font-family:var(--font-mono); transition:color 0.2s; }
+.password-toggle:hover { color: var(--accent); }
+
+/* ── Remember / Forgot ── */
+.form-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.remember-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.remember-checkbox {
+  width: 16px; height: 16px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  appearance: none;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s;
+}
+.remember-checkbox:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.remember-checkbox:checked::after {
+  content: '✓';
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.65rem;
+  color: var(--bg);
+  font-weight: 700;
+}
+
+.forgot-link {
+  font-size: 0.85rem;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+  transition: opacity 0.15s;
+}
+.forgot-link:hover { opacity: 0.8; }
+
+/* ── Error message ── */
+.error-msg {
+  display: none;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--danger);
+  margin-bottom: 1.2rem;
+  animation: shakeIn 0.4s ease;
+}
+.error-msg.show { display: flex; }
+@keyframes shakeIn {
+  0% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(2px); }
+  100% { transform: translateX(0); }
+}
+
+/* ── Button ── */
+.btn-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.85rem;
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  border-radius: 8px;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 0 30px var(--accent-glow-strong);
+}
+.btn-login:hover { transform: translateY(-1px); box-shadow: 0 0 50px var(--accent-glow-strong); }
+.btn-login:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.loading-spinner {
+  display: none;
+  width: 18px; height: 18px;
+  border: 2px solid var(--bg);
+  border-top: 2px solid transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Footer ── */
+.login-footer {
+  text-align: center;
+  margin-top: 1.5rem;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+
+.login-footer-version {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  text-align: center;
+  margin-top: 2rem;
+  opacity: 0.6;
+}
+
+/* ── Forgot Password Overlay ── */
+.forgot-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:1000; backdrop-filter:blur(8px); animation:fadeOverlay 0.3s ease; }
+.forgot-overlay.hidden { display:none; }
+@keyframes fadeOverlay { from{opacity:0} to{opacity:1} }
+
+.forgot-modal { background:var(--bg-elevated); border:1px solid var(--border); border-radius:16px; width:100%; max-width:460px; padding:2rem; box-shadow:0 25px 80px rgba(0,0,0,0.6); position:relative; animation:cardIn 0.3s ease; }
+.forgot-close { position:absolute; top:1rem; right:1rem; background:none; border:none; color:var(--text-dim); font-size:1.2rem; cursor:pointer; padding:2px 6px; border-radius:4px; transition:color 0.15s; }
+.forgot-close:hover { color:var(--text); }
+.forgot-icon { width:56px; height:56px; border-radius:14px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.2); display:flex; align-items:center; justify-content:center; font-size:1.5rem; margin-bottom:1.2rem; }
+.forgot-title { font-size:1.2rem; font-weight:700; margin-bottom:0.4rem; }
+.forgot-desc { color:var(--text-muted); font-size:0.9rem; font-weight:300; line-height:1.6; margin-bottom:1.5rem; }
+
+.forgot-step { display:none; }
+.forgot-step.active { display:block; }
+
+.cli-block { background:var(--bg); border:1px solid var(--border); border-radius:10px; overflow:hidden; margin-bottom:1.2rem; }
+.cli-header { display:flex; align-items:center; justify-content:space-between; padding:0.5rem 0.8rem; background:var(--bg-card); border-bottom:1px solid var(--border); }
+.cli-header-title { font-family:var(--font-mono); font-size:0.7rem; color:var(--text-dim); }
+.cli-copy { background:none; border:none; color:var(--text-dim); font-family:var(--font-mono); font-size:0.7rem; cursor:pointer; padding:0.15rem 0.4rem; border-radius:3px; transition:all 0.15s; }
+.cli-copy:hover { color:var(--accent); }
+.cli-body { padding:0.8rem 1rem; font-family:var(--font-mono); font-size:0.82rem; line-height:1.7; }
+.cli-prompt { color:var(--accent); }
+.cli-output { color:var(--text-muted); }
+.cli-highlight { color:var(--accent-warm); }
+
+.forgot-note { display:flex; gap:0.6rem; padding:0.8rem; background:rgba(245,158,11,0.06); border:1px solid rgba(245,158,11,0.15); border-radius:8px; font-size:0.82rem; color:var(--text-muted); line-height:1.5; margin-bottom:1.2rem; }
+.forgot-note-icon { flex-shrink:0; }
+
+.token-input-row { display:flex; gap:0.5rem; margin-bottom:0.8rem; }
+.token-input { flex:1; padding:0.7rem 1rem; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:var(--font-mono); font-size:0.9rem; letter-spacing:0.15em; text-align:center; outline:none; transition:border-color 0.2s; }
+.token-input:focus { border-color:var(--border-focus); }
+.token-input::placeholder { letter-spacing:0.05em; color:var(--text-dim); }
+
+.forgot-btn { display:flex; align-items:center; justify-content:center; gap:0.5rem; width:100%; padding:0.75rem; background:var(--accent); color:var(--bg); border:none; border-radius:8px; font-family:var(--font-body); font-size:0.92rem; font-weight:600; cursor:pointer; transition:all 0.2s; box-shadow:0 0 20px var(--accent-glow); }
+.forgot-btn:hover { transform:translateY(-1px); }
+.forgot-btn-ghost { display:flex; align-items:center; justify-content:center; width:100%; padding:0.65rem; background:transparent; color:var(--text-muted); border:1px solid var(--border); border-radius:8px; font-family:var(--font-body); font-size:0.88rem; cursor:pointer; transition:all 0.15s; margin-top:0.5rem; }
+.forgot-btn-ghost:hover { border-color:var(--text-muted); color:var(--text); }
+
+.new-pw-fields { margin-bottom:1rem; }
+.new-pw-fields .form-group { margin-bottom:1rem; }
+
+.reset-success { text-align:center; }
+.reset-success-icon { width:64px; height:64px; border-radius:50%; background:var(--accent-glow); border:2px solid var(--accent); display:flex; align-items:center; justify-content:center; font-size:1.8rem; margin:0 auto 1rem; animation:scaleIn 0.5s cubic-bezier(0.34,1.56,0.64,1); }
+@keyframes scaleIn { from{transform:scale(0);opacity:0} to{transform:scale(1);opacity:1} }
+
+@media (max-width: 480px) {
+  .login-container { padding: 1.2rem; }
+  .login-card { padding: 1.5rem; }
+  .login-title { font-size: 1.2rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="ambient"></div>
+
+<div class="login-container">
+
+  <!-- Logo -->
+  <div class="login-logo">
+    <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M14 2.5L4 7v7c0 6.1 4.3 11.5 10 13 5.7-1.5 10-6.9 10-13V7L14 2.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+      <circle cx="14" cy="11" r="2" fill="currentColor"/>
+      <circle cx="9" cy="17" r="1.3" fill="currentColor"/>
+      <circle cx="19" cy="17" r="1.3" fill="currentColor"/>
+      <circle cx="14" cy="21" r="1.3" fill="currentColor"/>
+      <path d="M14 13v2.5l-4 2M14 15.5l4 2M9 17l5 4M19 17l-5 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <span style="color:var(--accent)">local</span><span class="logo-dash">-</span><span style="color:var(--accent)">ai</span><span style="color:var(--text-dim)">.run</span>
+  </div>
+
+  <!-- Login Card -->
+  <div class="login-card">
+    <h1 class="login-title">Welcome back</h1>
+    <p class="login-subtitle">Sign in to your local-ai instance</p>
+
+    <div class="error-msg" id="errorMsg">
+      <span>⚠</span>
+      <span id="errorText">Invalid email or password.</span>
+    </div>
+
+    <form onsubmit="return handleLogin(event)">
+      <div class="form-group">
+        <label class="form-label" for="email">Email</label>
+        <input class="form-input" type="email" id="email" placeholder="admin@yourcompany.com" required autocomplete="email">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        <div class="password-wrapper">
+          <input class="form-input" type="password" id="password" placeholder="Enter your password" required autocomplete="current-password">
+          <button type="button" class="password-toggle" onclick="togglePassword()">show</button>
+        </div>
+      </div>
+
+      <div class="form-options">
+        <label class="remember-label">
+          <input type="checkbox" class="remember-checkbox" checked>
+          Remember me
+        </label>
+        <a href="#" class="forgot-link" onclick="event.preventDefault();showForgot()">Forgot password?</a>
+      </div>
+
+      <button class="btn-login" type="submit" id="loginBtn">
+        <span id="btnText">Sign In</span>
+        <div class="loading-spinner" id="btnSpinner"></div>
+      </button>
+    </form>
+  </div>
+
+  <div class="login-footer">
+    Running on <strong style="color:var(--text-muted)">localhost:3000</strong> · All data stays local
+  </div>
+
+  <div class="login-footer-version">local-ai.run v1.0.0</div>
+
+</div>
+
+<!-- ── Forgot Password Modal ── -->
+<div class="forgot-overlay hidden" id="forgotOverlay">
+  <div class="forgot-modal">
+    <button class="forgot-close" onclick="closeForgot()">✕</button>
+
+    <!-- Step 1: Instructions -->
+    <div class="forgot-step active" id="forgot-step-1">
+      <div class="forgot-icon">🔐</div>
+      <div class="forgot-title">Reset your password</div>
+      <div class="forgot-desc">Since local-ai runs offline, password reset is done through the command line on the host machine.</div>
+
+      <div class="cli-block">
+        <div class="cli-header">
+          <span class="cli-header-title">Run on your server</span>
+          <button class="cli-copy" onclick="copyCmd(this, 'docker exec local-ai-api python manage.py reset-password')">Copy</button>
+        </div>
+        <div class="cli-body">
+          <span class="cli-prompt">$</span> docker exec local-ai-api python manage.py reset-password<br>
+          <br>
+          <span class="cli-output">Enter admin email: </span><span class="cli-highlight"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="b6d7d2dbdfd8f6d5d9dbc6d7d8cf98d5d9db">[email&#160;protected]</a></span><br>
+          <span class="cli-output">Reset token generated:</span><br>
+          <span class="cli-highlight">RX7K-4M2N-9PWT</span><br>
+          <span class="cli-output">Token expires in 15 minutes.</span>
+        </div>
+      </div>
+
+      <div class="forgot-note">
+        <span class="forgot-note-icon">💡</span>
+        <span>You need terminal access to the machine running local-ai. The command generates a one-time token that expires in 15 minutes.</span>
+      </div>
+
+      <button class="forgot-btn" onclick="goForgotStep(2)">I have my reset token →</button>
+      <button class="forgot-btn-ghost" onclick="closeForgot()">Back to sign in</button>
+    </div>
+
+    <!-- Step 2: Enter Token + New Password -->
+    <div class="forgot-step" id="forgot-step-2">
+      <div class="forgot-icon">🔑</div>
+      <div class="forgot-title">Enter reset token</div>
+      <div class="forgot-desc">Paste the token from your terminal and set a new password.</div>
+
+      <div class="form-group">
+        <label class="form-label">Reset Token</label>
+        <input class="token-input" type="text" id="resetToken" placeholder="XXXX-XXXX-XXXX" maxlength="14" autocomplete="off">
+      </div>
+
+      <div class="new-pw-fields">
+        <div class="form-group">
+          <label class="form-label">New Password</label>
+          <input class="form-input" type="password" id="newPw" placeholder="Min 8 characters" minlength="8">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Confirm New Password</label>
+          <input class="form-input" type="password" id="confirmNewPw" placeholder="Re-enter password">
+        </div>
+      </div>
+
+      <button class="forgot-btn" onclick="submitReset()">Reset Password</button>
+      <button class="forgot-btn-ghost" onclick="goForgotStep(1)">← Back</button>
+    </div>
+
+    <!-- Step 3: Success -->
+    <div class="forgot-step" id="forgot-step-3">
+      <div class="reset-success">
+        <div class="reset-success-icon">✓</div>
+        <div class="forgot-title">Password reset!</div>
+        <div class="forgot-desc" style="margin-bottom:1.5rem;">Your password has been updated. You can now sign in with your new credentials.</div>
+        <button class="forgot-btn" onclick="closeForgot()">Back to Sign In</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+function togglePassword() {
+  const pw = document.getElementById('password');
+  const btn = document.querySelector('.password-toggle');
+  if (pw.type === 'password') { pw.type = 'text'; btn.textContent = 'hide'; }
+  else { pw.type = 'password'; btn.textContent = 'show'; }
+}
+
+function handleLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById('email');
+  const password = document.getElementById('password');
+  const errorMsg = document.getElementById('errorMsg');
+
+  errorMsg.classList.remove('show');
+  email.classList.remove('error');
+  password.classList.remove('error');
+
+  document.getElementById('btnText').textContent = 'Signing in...';
+  document.getElementById('btnSpinner').style.display = 'inline-block';
+  document.getElementById('loginBtn').disabled = true;
+
+  setTimeout(() => {
+    if (email.value === 'admin@company.com' && password.value === 'password') {
+      window.location.href = 'dashboard.html';
+    } else {
+      document.getElementById('btnText').textContent = 'Sign In';
+      document.getElementById('btnSpinner').style.display = 'none';
+      document.getElementById('loginBtn').disabled = false;
+      email.classList.add('error');
+      password.classList.add('error');
+      document.getElementById('errorText').textContent = 'Invalid email or password. Please try again.';
+      errorMsg.classList.add('show');
+      const clearError = () => {
+        errorMsg.classList.remove('show');
+        email.classList.remove('error');
+        password.classList.remove('error');
+        email.removeEventListener('input', clearError);
+        password.removeEventListener('input', clearError);
+      };
+      email.addEventListener('input', clearError);
+      password.addEventListener('input', clearError);
+    }
+  }, 1200);
+  return false;
+}
+
+// ── Forgot Password Flow ──
+function showForgot() {
+  document.getElementById('forgotOverlay').classList.remove('hidden');
+  goForgotStep(1);
+}
+
+function closeForgot() {
+  document.getElementById('forgotOverlay').classList.add('hidden');
+  goForgotStep(1);
+}
+
+function goForgotStep(n) {
+  document.querySelectorAll('.forgot-step').forEach(s => s.classList.remove('active'));
+  document.getElementById('forgot-step-' + n).classList.add('active');
+}
+
+function submitReset() {
+  const token = document.getElementById('resetToken').value.trim();
+  const newPw = document.getElementById('newPw').value;
+  const confirmPw = document.getElementById('confirmNewPw').value;
+
+  if (!token) { alert('Please enter the reset token.'); return; }
+  if (newPw.length < 8) { alert('Password must be at least 8 characters.'); return; }
+  if (newPw !== confirmPw) { alert('Passwords do not match.'); return; }
+
+  // Simulate re

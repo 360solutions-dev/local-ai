@@ -1,0 +1,204 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: local-ai-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      nextjs:
+        condition: service_healthy
+      django:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - local-ai-net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: local-ai-postgres
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - local-ai-net
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: local-ai-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./ollama/entrypoint.sh:/entrypoint.sh
+    entrypoint: ["/entrypoint.sh"]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - local-ai-net
+
+  django:
+    build: ./backend
+    container_name: local-ai-django
+    restart: unless-stopped
+    # Run as root so the storage page can read /var/run/docker.sock for
+    # per-project Docker stats. Acceptable for a local single-user app.
+    user: "0"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_DEBUG: ${DJANGO_DEBUG}
+      ALLOWED_HOSTS: localhost,127.0.0.1,django,api.local-ai.localhost
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      RAG_SERVICE_URL: ${RAG_SERVICE_URL}
+      RAG_API_KEY: ${RAG_API_KEY}
+      WHISPER_SERVICE_URL: ${WHISPER_SERVICE_URL}
+      WHISPER_API_KEY: ${WHISPER_API_KEY}
+      UPDATER_SERVICE_URL: ${UPDATER_SERVICE_URL:-http://updater:8070}
+      UPDATER_API_KEY: ${UPDATER_API_KEY:-defaultkey}
+    volumes:
+      - ./backend:/app
+      # Read-only Docker socket so the storage page can report the project's
+      # real Docker footprint via the Docker Engine API.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # Use a public endpoint — /api/system/info/ requires auth and returns 401,
+      # which urllib treats as HTTPError and the healthcheck fails even though
+      # Django is healthy.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/auth/setup-status/')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - local-ai-net
+
+  nextjs:
+    build: ./frontend
+    container_name: local-ai-nextjs
+    restart: unless-stopped
+    # Override Dockerfile USER so the container can write to the anonymous
+    # /app/.next and /app/node_modules volumes (Docker creates them root-owned,
+    # which causes Turbopack EACCES on .next/dev mkdir for the image's appuser).
+    user: "0"
+    environment:
+      BACKEND_URL: ${BACKEND_URL}
+      RAG_URL: ${RAG_URL}
+      RAG_API_KEY: ${RAG_API_KEY}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      django:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - local-ai-net
+
+  rag:
+    build: ./rag
+    container_name: local-ai-rag
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+      RAG_API_KEY: ${RAG_API_KEY}
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./rag:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      # The real health endpoint is /api/health (not /health).
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - local-ai-net
+
+  whisper:
+    build: ./whisper
+    container_name: local-ai-whisper
+    restart: unless-stopped
+    environment:
+      WHISPER_API_KEY: ${WHISPER_API_KEY}
+      # Multilingual model — supports all 6 UI locales. Switch to *.en variants
+      # for English-only and slightly faster inference. Sizes: tiny | base | small.
+      WHISPER_MODEL: ${WHISPER_MODEL:-base}
+      # int8 is the fastest CPU compute type with negligible quality loss.
+      WHISPER_COMPUTE_TYPE: int8
+    volumes:
+      # Cache downloaded models across rebuilds so we don't re-fetch ~140 MB.
+      - whisper_models:/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - local-ai-net
+
+  updater:
+    build: ./updater
+    container_name: local-ai-updater
+    restart: unless-stopped
+    environment:
+      UPDATER_API_KEY: ${UPDATER_API_KEY:-defaultkey}
+      LOCAL_AI_IMAGE_PREFIX: ${LOCAL_AI_IMAGE_PREFIX:-alinawaz360}
+    volumes:
+      # Mount the project directory so update.sh can run docker compose commands.
+      - .:/project
+      # Read-write Docker socket so we can run docker compose pull/up.
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8070/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - local-ai-net
+
+volumes:
+  postgres_data:
+  ollama_data:
+  whisper_models:
+
+networks:
+  local-ai-net:
+    driver: bridge
