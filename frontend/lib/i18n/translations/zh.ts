@@ -396,6 +396,13 @@ const zh: Translations = {
   "tts.downloadingName": "正在下载 {name}...",
 
   "chat.newChat": "+ 新对话",
+  "chat.newChatShortcut": "新对话 (⌘⇧O / Ctrl+Shift+O)",
+  "chat.rename": "重命名",
+  "chat.delete": "删除",
+  "chat.duplicate": "复制",
+  "chat.duplicating": "正在复制对话...",
+  "chat.duplicated": "对话已复制",
+  "chat.duplicateError": "无法复制对话",
   "chat.today": "今天",
   "chat.yesterday": "昨天",
   "chat.chatWithFiles": "文件对话",

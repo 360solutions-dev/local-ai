@@ -410,6 +410,13 @@ const en = {
 
   // Chat
   "chat.newChat": "+ New Chat",
+  "chat.newChatShortcut": "New Chat (⌘⇧O / Ctrl+Shift+O)",
+  "chat.rename": "Rename",
+  "chat.delete": "Delete",
+  "chat.duplicate": "Duplicate",
+  "chat.duplicating": "Duplicating chat...",
+  "chat.duplicated": "Chat duplicated",
+  "chat.duplicateError": "Couldn't duplicate chat",
   "chat.today": "Today",
   "chat.yesterday": "Yesterday",
   "chat.chatWithFiles": "Chat with Files",

@@ -396,6 +396,13 @@ const fr: Translations = {
   "tts.downloadingName": "Téléchargement de {name}...",
 
   "chat.newChat": "+ Nouveau chat",
+  "chat.newChatShortcut": "Nouveau chat (⌘⇧O / Ctrl+Shift+O)",
+  "chat.rename": "Renommer",
+  "chat.delete": "Supprimer",
+  "chat.duplicate": "Dupliquer",
+  "chat.duplicating": "Duplication du chat...",
+  "chat.duplicated": "Chat dupliqué",
+  "chat.duplicateError": "Échec de la duplication du chat",
   "chat.today": "Aujourd'hui",
   "chat.yesterday": "Hier",
   "chat.chatWithFiles": "Chat avec fichiers",

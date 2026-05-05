@@ -201,6 +201,70 @@ class ConversationDeleteView(APIView):
         return Response({"message": "Conversation deleted."})
 
 
+class ConversationDuplicateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, conversation_id):
+        """Duplicate a conversation including all its messages.
+
+        Files are global to the user (not per-conversation in this app), so
+        message-level file references via `sources` are copied verbatim.
+        Fresh turn_ids are generated to avoid joining duplicated turns to the
+        original.
+        """
+        _ensure_tables()
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT title FROM conversations WHERE id = %s",
+                [conversation_id],
+            )
+            row = cur.fetchone()
+            if not row:
+                return Response(
+                    {"error": {"code": "NOT_FOUND", "message": "Conversation not found."}},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            original_title = row[0] or "Untitled"
+            new_title = f"{original_title} (copy)"[:255]
+
+            cur.execute(
+                "INSERT INTO conversations (title, created_at) VALUES (%s, NOW()) "
+                "RETURNING id, title, created_at",
+                [new_title],
+            )
+            new_row = cur.fetchone()
+            new_id = new_row[0]
+
+            cur.execute(
+                "SELECT role, content, sources, turn_id, created_at FROM messages "
+                "WHERE conversation_id = %s ORDER BY id ASC",
+                [conversation_id],
+            )
+            old_messages = cur.fetchall()
+
+            turn_id_map: dict = {}
+            for role, content, sources, turn_id, created_at in old_messages:
+                if turn_id is not None:
+                    if turn_id not in turn_id_map:
+                        cur.execute("SELECT gen_random_uuid()")
+                        turn_id_map[turn_id] = cur.fetchone()[0]
+                    new_turn_id = turn_id_map[turn_id]
+                else:
+                    new_turn_id = None
+                cur.execute(
+                    "INSERT INTO messages (role, content, sources, conversation_id, turn_id, created_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s)",
+                    [role, content, sources, new_id, new_turn_id, created_at],
+                )
+
+        conversation = {
+            "id": new_row[0],
+            "title": new_row[1] or "Untitled",
+            "created_at": new_row[2].isoformat() if new_row[2] else None,
+        }
+        return Response({"conversation": conversation}, status=status.HTTP_201_CREATED)
+
+
 class ConversationMessagesView(APIView):
     permission_classes = [IsAuthenticated]
 

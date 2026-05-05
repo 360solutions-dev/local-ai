@@ -297,6 +297,29 @@ export function useRenameConversation() {
   });
 }
 
+export function useDuplicateConversation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (conversationId: number) => {
+      const res = await apiPost<{ conversation: Conversation }>(
+        `/api/chat/conversations/${conversationId}/duplicate/`,
+        {},
+      );
+      if (!res.ok) {
+        throw new Error(
+          (res.data as unknown as { error?: { message?: string } })?.error
+            ?.message || "Failed to duplicate conversation.",
+        );
+      }
+      return res.data.conversation;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["chat", "conversations"] });
+    },
+  });
+}
+
 export function useDeleteConversation() {
   const queryClient = useQueryClient();
 

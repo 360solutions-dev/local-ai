@@ -14,6 +14,11 @@ urlpatterns = [
         name="chat-conversation-delete",
     ),
     path(
+        "conversations/<int:conversation_id>/duplicate/",
+        views.ConversationDuplicateView.as_view(),
+        name="chat-conversation-duplicate",
+    ),
+    path(
         "conversations/<int:conversation_id>/messages/",
         views.ConversationMessagesView.as_view(),
         name="chat-conversation-messages",

@@ -396,6 +396,13 @@ const ja: Translations = {
   "tts.downloadingName": "{name}をダウンロード中...",
 
   "chat.newChat": "+ 新しいチャット",
+  "chat.newChatShortcut": "新しいチャット (⌘⇧O / Ctrl+Shift+O)",
+  "chat.rename": "名前を変更",
+  "chat.delete": "削除",
+  "chat.duplicate": "複製",
+  "chat.duplicating": "チャットを複製中...",
+  "chat.duplicated": "チャットを複製しました",
+  "chat.duplicateError": "チャットを複製できませんでした",
   "chat.today": "今日",
   "chat.yesterday": "昨日",
   "chat.chatWithFiles": "ファイルとチャット",

@@ -12,6 +12,8 @@ import {
 import { ArrowRight, Check, Copy, Ellipsis, Mic, Pencil, Trash2 } from "lucide-react";
 import Sidebar from "@/components/layout/Sidebar";
 import VoiceInput from "@/components/ui/VoiceInput";
+import Toast from "@/components/ui/Toast";
+import { useKeyboardShortcut } from "@/hooks/use-keyboard-shortcut";
 import { useTranslation } from "@/lib/i18n";
 import {
   useFlatConversations,
@@ -20,6 +22,7 @@ import {
   useCreateConversation,
   useSendMessage,
   useDeleteConversation,
+  useDuplicateConversation,
   useRenameConversation,
   useIndexedFiles,
   useUploadFile,
@@ -126,10 +129,16 @@ export default function ChatClient() {
   const sendMessage = useSendMessage();
   const [copiedMessageId, setCopiedMessageId] = useState<string | number | null>(null);
   const deleteConversation = useDeleteConversation();
+  const duplicateConversation = useDuplicateConversation();
   const renameConversation = useRenameConversation();
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  }, []);
   const { data: indexedFiles = [], isLoading: filesLoading } = useIndexedFiles();
   const uploadFile = useUploadFile();
   const deleteFile = useDeleteFile();
@@ -596,6 +605,21 @@ export default function ChatClient() {
     setRenameValue("");
   }
 
+  function handleDuplicateConversation(convId: number) {
+    setMenuOpenId(null);
+    if (duplicateConversation.isPending) return;
+    showToast(t("chat.duplicating"));
+    duplicateConversation.mutate(convId, {
+      onSuccess: (conv) => {
+        setActiveChatId(conv.id);
+        showToast(t("chat.duplicated"));
+      },
+      onError: () => showToast(t("chat.duplicateError")),
+    });
+  }
+
+  useKeyboardShortcut({ key: "o", meta: true, shift: true, handler: handleNewChat });
+
   // Close menu on outside click
   useEffect(() => {
     if (menuOpenId === null) return;
@@ -810,6 +834,7 @@ export default function ChatClient() {
             type="button"
             className="mx-3 mt-3 mb-1 py-2.5 bg-accent/15 border border-dashed border-border-accent rounded-lg text-accent font-body text-[0.88rem] font-medium cursor-pointer transition-all text-center hover:bg-accent/30 hover:border-solid"
             onClick={handleNewChat}
+            title={t("chat.newChatShortcut")}
           >
             {t("chat.newChat")}
           </button>
@@ -872,7 +897,16 @@ export default function ChatClient() {
                             onClick={() => handleStartRename(c.id, c.title)}
                           >
                             <Pencil size={14} />
-                            Rename
+                            {t("chat.rename")}
+                          </button>
+                          <button
+                            type="button"
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-[0.82rem] text-text-muted bg-transparent border-none cursor-pointer transition-colors hover:bg-bg-card hover:text-text text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={() => handleDuplicateConversation(c.id)}
+                            disabled={duplicateConversation.isPending}
+                          >
+                            <Copy size={14} />
+                            {t("chat.duplicate")}
                           </button>
                           <button
                             type="button"
@@ -880,7 +914,7 @@ export default function ChatClient() {
                             onClick={() => handleDeleteConversation(c.id)}
                           >
                             <Trash2 size={14} />
-                            Delete
+                            {t("chat.delete")}
                           </button>
                         </div>
                       )}
@@ -1627,6 +1661,7 @@ export default function ChatClient() {
           </div>
         </div>
       )}
+      <Toast message={toast} />
     </div>
   );
 }
