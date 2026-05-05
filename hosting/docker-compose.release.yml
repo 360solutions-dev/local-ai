@@ -48,7 +48,7 @@ services:
 
   # Bundled Ollama image. Omit by removing container-ollama from COMPOSE_PROFILES to use host Ollama instead.
   ollama:
-    image: ${LOCAL_AI_IMAGE_PREFIX:-alinawaz360}/local-ai-ollama:${LOCAL_AI_IMAGE_TAG:-1.0.2}
+    image: ${LOCAL_AI_IMAGE_PREFIX:-rizwanhameed360s}/local-ai-ollama:${LOCAL_AI_IMAGE_TAG:-1.0.2}
     container_name: local-ai-ollama
     profiles:
       - container-ollama
@@ -66,7 +66,7 @@ services:
       - local-ai-net
 
   django:
-    image: ${LOCAL_AI_IMAGE_PREFIX:-alinawaz360}/local-ai-django:${LOCAL_AI_IMAGE_TAG:-1.0.2}
+    image: ${LOCAL_AI_IMAGE_PREFIX:-rizwanhameed360s}/local-ai-django:${LOCAL_AI_IMAGE_TAG:-1.0.2}
     container_name: local-ai-django
     restart: unless-stopped
     user: "0"
@@ -101,7 +101,7 @@ services:
       - local-ai-net
 
   nextjs:
-    image: ${LOCAL_AI_IMAGE_PREFIX:-alinawaz360}/local-ai-nextjs:${LOCAL_AI_IMAGE_TAG:-1.0.2}
+    image: ${LOCAL_AI_IMAGE_PREFIX:-rizwanhameed360s}/local-ai-nextjs:${LOCAL_AI_IMAGE_TAG:-1.0.2}
     container_name: local-ai-nextjs
     restart: unless-stopped
     environment:
@@ -129,7 +129,7 @@ services:
       - local-ai-net
 
   rag:
-    image: ${LOCAL_AI_IMAGE_PREFIX:-alinawaz360}/local-ai-rag:${LOCAL_AI_IMAGE_TAG:-1.0.2}
+    image: ${LOCAL_AI_IMAGE_PREFIX:-rizwanhameed360s}/local-ai-rag:${LOCAL_AI_IMAGE_TAG:-1.0.2}
     container_name: local-ai-rag
     restart: unless-stopped
     env_file: .env
@@ -153,7 +153,7 @@ services:
       - local-ai-net
 
   whisper:
-    image: ${LOCAL_AI_IMAGE_PREFIX:-alinawaz360}/local-ai-whisper:${LOCAL_AI_IMAGE_TAG:-1.0.2}
+    image: ${LOCAL_AI_IMAGE_PREFIX:-rizwanhameed360s}/local-ai-whisper:${LOCAL_AI_IMAGE_TAG:-1.0.2}
     container_name: local-ai-whisper
     restart: unless-stopped
     environment:
@@ -171,12 +171,12 @@ services:
       - local-ai-net
 
   updater:
-    image: ${LOCAL_AI_IMAGE_PREFIX:-alinawaz360}/local-ai-updater:${LOCAL_AI_IMAGE_TAG:-1.0.2}
+    image: ${LOCAL_AI_IMAGE_PREFIX:-rizwanhameed360s}/local-ai-updater:${LOCAL_AI_IMAGE_TAG:-1.0.2}
     container_name: local-ai-updater
     restart: unless-stopped
     environment:
       UPDATER_API_KEY: ${UPDATER_API_KEY:-defaultkey}
-      LOCAL_AI_IMAGE_PREFIX: ${LOCAL_AI_IMAGE_PREFIX:-alinawaz360}
+      LOCAL_AI_IMAGE_PREFIX: ${LOCAL_AI_IMAGE_PREFIX:-rizwanhameed360s}
       CURRENT_VERSION: ${LOCAL_AI_IMAGE_TAG:-1.0.2}
     volumes:
       - .:/project

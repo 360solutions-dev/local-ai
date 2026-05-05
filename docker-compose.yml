@@ -180,7 +180,7 @@ services:
     restart: unless-stopped
     environment:
       UPDATER_API_KEY: ${UPDATER_API_KEY:-defaultkey}
-      LOCAL_AI_IMAGE_PREFIX: ${LOCAL_AI_IMAGE_PREFIX:-alinawaz360}
+      LOCAL_AI_IMAGE_PREFIX: ${LOCAL_AI_IMAGE_PREFIX:-rizwanhameed360s}
     volumes:
       # Mount the project directory so update.sh can run docker compose commands.
       - .:/project
