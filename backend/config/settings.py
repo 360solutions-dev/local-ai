@@ -37,7 +37,7 @@ INSTALLED_APPS = [
     "chat",
 ]
 
-VERSION = "1.0.1"
+VERSION = os.environ.get("APP_VERSION") or "1.0.2"
 
 # Middleware
 MIDDLEWARE = [
