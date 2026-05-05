@@ -165,6 +165,31 @@ info "Starting Local AI ..."
 docker compose -f docker-compose.release.yml up -d
 log "Stack started"
 
+# ── 12.5 Install 'local-ai' helper command ──────────────────────────────────
+printf "\n"
+info "Installing 'local-ai' command ..."
+TMP_CLI=$(mktemp)
+if curl -fsSL "$BASE_URL/local-ai" -o "$TMP_CLI"; then
+  chmod +x "$TMP_CLI"
+  if [[ -w /usr/local/bin ]]; then
+    mv "$TMP_CLI" /usr/local/bin/local-ai
+    log "'local-ai' command installed"
+  else
+    info "Need permission to install to /usr/local/bin (you may be prompted for your password)"
+    if sudo mv "$TMP_CLI" /usr/local/bin/local-ai 2>/dev/null; then
+      log "'local-ai' command installed"
+    else
+      mkdir -p "$INSTALL_DIR/bin"
+      mv "$TMP_CLI" "$INSTALL_DIR/bin/local-ai" 2>/dev/null || true
+      warn "Could not install to /usr/local/bin — placed at $INSTALL_DIR/bin/local-ai"
+      warn "Run with full path or add $INSTALL_DIR/bin to your PATH"
+    fi
+  fi
+else
+  rm -f "$TMP_CLI"
+  warn "Could not download 'local-ai' helper — skipping (use docker compose directly)"
+fi
+
 # ── 13. Wait for the app to be ready ─────────────────────────────────────────
 printf "\n"
 info "Waiting for Local AI to be ready"
@@ -187,7 +212,9 @@ printf "\n${BOLD}${GREEN}  Local AI is ready!${NC}\n\n"
 printf "  Open in your browser:  ${BOLD}http://local-ai.localhost${NC}\n"
 printf "\n"
 printf "  Useful commands:\n"
-printf "    Stop:    docker compose -f $INSTALL_DIR/docker-compose.release.yml down\n"
-printf "    Logs:    docker compose -f $INSTALL_DIR/docker-compose.release.yml logs -f\n"
-printf "    Update:  Open the app -> Settings -> Check for Update\n"
+printf "    Stop:     local-ai stop\n"
+printf "    Start:    local-ai start\n"
+printf "    Logs:     local-ai logs\n"
+printf "    Help:     local-ai help\n"
+printf "    Update:   Open the app -> Settings -> Check for Update\n"
 printf "\n"

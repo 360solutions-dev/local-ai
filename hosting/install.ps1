@@ -167,6 +167,24 @@ Write-Info "Starting Local AI ..."
 docker compose -f docker-compose.release.yml up -d
 Write-OK "Stack started"
 
+# 12.5 Install 'local-ai' helper command
+Write-Host ""
+Write-Info "Installing 'local-ai' command ..."
+try {
+    Invoke-WebRequest "$BASE_URL/local-ai.cmd" -OutFile "$INSTALL_DIR\local-ai.cmd" -UseBasicParsing
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if (-not $userPath) { $userPath = "" }
+    if ($userPath -notlike "*$INSTALL_DIR*") {
+        $newPath = if ($userPath) { "$userPath;$INSTALL_DIR" } else { "$INSTALL_DIR" }
+        [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
+        Write-OK "'local-ai' command installed (open a new terminal to use it)"
+    } else {
+        Write-OK "'local-ai' command installed"
+    }
+} catch {
+    Write-Warn "Could not install 'local-ai' helper - skipping (use docker compose directly)"
+}
+
 # 13. Wait for app to be ready
 Write-Host ""
 Write-Info "Waiting for Local AI to be ready"
@@ -195,7 +213,11 @@ Write-Host ""
 Write-Host "  Open in your browser:  http://local-ai.localhost" -ForegroundColor White
 Write-Host ""
 Write-Host "  Useful commands:"
-Write-Host "    Stop:    docker compose -f $INSTALL_DIR\docker-compose.release.yml down"
-Write-Host "    Logs:    docker compose -f $INSTALL_DIR\docker-compose.release.yml logs -f"
-Write-Host "    Update:  Open the app -> Settings -> Check for Update"
+Write-Host "    Stop:     local-ai stop"
+Write-Host "    Start:    local-ai start"
+Write-Host "    Logs:     local-ai logs"
+Write-Host "    Help:     local-ai help"
+Write-Host "    Update:   Open the app -> Settings -> Check for Update"
+Write-Host ""
+Write-Host "  Note: open a new terminal window to use the 'local-ai' command."
 Write-Host ""
