@@ -119,6 +119,7 @@ log ".env.example downloaded"
 # Extract release-controlled values (Docker Hub prefix + tag) from the latest .env.example
 RELEASE_PREFIX=$(grep -m1 '^LOCAL_AI_IMAGE_PREFIX=' .env.example | cut -d= -f2- | tr -d '\r')
 RELEASE_TAG=$(grep -m1 '^LOCAL_AI_IMAGE_TAG=' .env.example | cut -d= -f2- | tr -d '\r')
+RELEASE_STABLE_TAG=$(grep -m1 '^LOCAL_AI_STABLE_TAG=' .env.example | cut -d= -f2- | tr -d '\r')
 [[ -z "$RELEASE_PREFIX" || -z "$RELEASE_TAG" ]] && die ".env.example missing LOCAL_AI_IMAGE_PREFIX/TAG"
 
 # Cross-platform sed -i wrapper
@@ -135,7 +136,15 @@ if [[ -f ".env" ]]; then
   log ".env already exists — preserving your secrets"
   sed_inplace "s|^LOCAL_AI_IMAGE_PREFIX=.*|LOCAL_AI_IMAGE_PREFIX=${RELEASE_PREFIX}|" .env
   sed_inplace "s|^LOCAL_AI_IMAGE_TAG=.*|LOCAL_AI_IMAGE_TAG=${RELEASE_TAG}|" .env
-  log "Synced LOCAL_AI_IMAGE_PREFIX=${RELEASE_PREFIX}, LOCAL_AI_IMAGE_TAG=${RELEASE_TAG}"
+  # Sync STABLE_TAG — add it if missing, update if present
+  if [[ -n "$RELEASE_STABLE_TAG" ]]; then
+    if grep -q '^LOCAL_AI_STABLE_TAG=' .env; then
+      sed_inplace "s|^LOCAL_AI_STABLE_TAG=.*|LOCAL_AI_STABLE_TAG=${RELEASE_STABLE_TAG}|" .env
+    else
+      printf '\nLOCAL_AI_STABLE_TAG=%s\n' "$RELEASE_STABLE_TAG" >> .env
+    fi
+  fi
+  log "Synced LOCAL_AI_IMAGE_PREFIX=${RELEASE_PREFIX}, LOCAL_AI_IMAGE_TAG=${RELEASE_TAG}, LOCAL_AI_STABLE_TAG=${RELEASE_STABLE_TAG:-$RELEASE_TAG}"
 else
   cp .env.example .env
 

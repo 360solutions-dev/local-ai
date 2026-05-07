@@ -46,7 +46,7 @@ services:
 
   # Bundled Ollama image. Omit by removing container-ollama from COMPOSE_PROFILES to use host Ollama instead.
   ollama:
-    image: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}/local-ai-ollama:${LOCAL_AI_IMAGE_TAG:?missing in .env}
+    image: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}/local-ai-ollama:${LOCAL_AI_STABLE_TAG:-${LOCAL_AI_IMAGE_TAG:?missing in .env}}
     container_name: local-ai-ollama
     profiles:
       - container-ollama
@@ -147,7 +147,7 @@ services:
       - local-ai-net
 
   whisper:
-    image: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}/local-ai-whisper:${LOCAL_AI_IMAGE_TAG:?missing in .env}
+    image: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}/local-ai-whisper:${LOCAL_AI_STABLE_TAG:-${LOCAL_AI_IMAGE_TAG:?missing in .env}}
     container_name: local-ai-whisper
     restart: unless-stopped
     environment:
