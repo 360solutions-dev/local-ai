@@ -161,6 +161,13 @@ const ja: Translations = {
   "settings.advanced.updateFailed": "アップデートに失敗しました。再試行するか、手動でアップデートしてください。",
   "settings.advanced.updateTimeout": "アップデートに予想以上の時間がかかっています。ページを更新するか、'docker compose up -d' を手動で実行してください。",
   "settings.advanced.checkFailed": "アップデートを確認できませんでした。",
+  "settings.advanced.updateStage.starting": "アップデートを準備中...",
+  "settings.advanced.updateStage.pulling": "新しいイメージをダウンロード中...",
+  "settings.advanced.updateStage.writing-env": "新しいバージョンを保存中...",
+  "settings.advanced.updateStage.starting-containers": "コンテナを起動中...",
+  "settings.advanced.updateStage.log": "処理中...",
+  "settings.advanced.updateStage.complete": "アップデート完了!",
+  "settings.advanced.updateStage.error": "アップデートエラー。",
   "settings.saved": "設定を保存しました。",
 
   "updateNotifier.title": "アップデートが利用可能",

@@ -494,6 +494,12 @@ def storage_info():
     # Host disk usage (container sees the host filesystem)
     disk = shutil.disk_usage("/")
 
+    # FAISS creates ~16 KB of empty index files on first startup even with no
+    # documents indexed. Hide that overhead from the UI when nothing is indexed
+    # so users see "0 KB" instead of a confusing baseline number.
+    if uploaded_files_bytes == 0:
+        vector_db_bytes = 0
+
     return {
         "vector_db_bytes": vector_db_bytes,
         "uploaded_files_bytes": uploaded_files_bytes,

@@ -161,6 +161,13 @@ const zh: Translations = {
   "settings.advanced.updateFailed": "更新失败。请重试或手动更新。",
   "settings.advanced.updateTimeout": "更新时间超出预期。请尝试刷新页面，或手动运行 'docker compose up -d'。",
   "settings.advanced.checkFailed": "无法检查更新。",
+  "settings.advanced.updateStage.starting": "正在准备更新...",
+  "settings.advanced.updateStage.pulling": "正在拉取新镜像...",
+  "settings.advanced.updateStage.writing-env": "正在保存新版本...",
+  "settings.advanced.updateStage.starting-containers": "正在启动容器...",
+  "settings.advanced.updateStage.log": "处理中...",
+  "settings.advanced.updateStage.complete": "更新完成！",
+  "settings.advanced.updateStage.error": "更新错误。",
   "settings.saved": "设置保存成功。",
 
   "updateNotifier.title": "更新可用",

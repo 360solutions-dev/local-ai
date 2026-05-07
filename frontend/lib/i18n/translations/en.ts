@@ -168,6 +168,13 @@ const en = {
   "settings.advanced.updateFailed": "Update failed. Please try again or update manually.",
   "settings.advanced.updateTimeout": "Update is taking longer than expected. Try refreshing the page, or run 'docker compose up -d' manually.",
   "settings.advanced.checkFailed": "Could not check for updates.",
+  "settings.advanced.updateStage.starting": "Preparing update...",
+  "settings.advanced.updateStage.pulling": "Pulling new images...",
+  "settings.advanced.updateStage.writing-env": "Saving new version...",
+  "settings.advanced.updateStage.starting-containers": "Starting containers...",
+  "settings.advanced.updateStage.log": "Working...",
+  "settings.advanced.updateStage.complete": "Update complete!",
+  "settings.advanced.updateStage.error": "Update error.",
   "settings.saved": "Settings saved successfully.",
 
   // Update Notifier (global banner)

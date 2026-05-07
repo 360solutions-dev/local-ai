@@ -42,6 +42,9 @@ VERSION = os.environ.get("APP_VERSION") or "1.0.2"
 # Middleware
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # WhiteNoise serves /static/ assets (Django admin CSS/JS) without
+    # needing a separate web server or `collectstatic` step at build time.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -134,5 +137,10 @@ USE_TZ = True
 
 # Static files
 STATIC_URL = "static/"
+# Single-user local app — serve static files directly from app dirs (no
+# `collectstatic` build step needed). Slightly slower than the default
+# manifest storage, but avoids modifying the Dockerfile/entrypoint.
+WHITENOISE_USE_FINDERS = True
+WHITENOISE_AUTOREFRESH = True
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

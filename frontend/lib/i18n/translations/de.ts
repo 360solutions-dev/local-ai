@@ -161,6 +161,13 @@ const de: Translations = {
   "settings.advanced.updateFailed": "Update fehlgeschlagen. Bitte versuchen Sie es erneut oder aktualisieren Sie manuell.",
   "settings.advanced.updateTimeout": "Das Update dauert länger als erwartet. Versuchen Sie, die Seite zu aktualisieren, oder führen Sie 'docker compose up -d' manuell aus.",
   "settings.advanced.checkFailed": "Update-Prüfung fehlgeschlagen.",
+  "settings.advanced.updateStage.starting": "Update wird vorbereitet...",
+  "settings.advanced.updateStage.pulling": "Neue Images werden geladen...",
+  "settings.advanced.updateStage.writing-env": "Neue Version wird gespeichert...",
+  "settings.advanced.updateStage.starting-containers": "Container werden gestartet...",
+  "settings.advanced.updateStage.log": "Wird ausgeführt...",
+  "settings.advanced.updateStage.complete": "Update abgeschlossen!",
+  "settings.advanced.updateStage.error": "Update-Fehler.",
   "settings.saved": "Einstellungen erfolgreich gespeichert.",
 
   "updateNotifier.title": "Update verfügbar",

@@ -66,14 +66,14 @@ if ($totalRAM_GB -lt $MIN_RAM_GB) {
 
 # 7. Ports free?
 $blockedPorts = @()
-foreach ($port in @(80, 5433, 11434, 8501)) {
+foreach ($port in @(80)) {
     $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
     if ($conn) { $blockedPorts += $port }
 }
 if ($blockedPorts.Count -gt 0) {
     Write-Warn "Port(s) already in use: $($blockedPorts -join ', '). Local AI may fail to start."
 } else {
-    Write-OK "Required ports (80, 5433, 11434, 8501) are free"
+    Write-OK "Required ports (80) are free"
 }
 
 # 8. Create install directory
@@ -94,62 +94,48 @@ Write-Info "Downloading Caddyfile ..."
 Invoke-WebRequest "$BASE_URL/Caddyfile" -OutFile "Caddyfile" -UseBasicParsing
 Write-OK "Caddyfile downloaded"
 
-# Read version from compose file
-$CURRENT_TAG = (Select-String -Path "docker-compose.release.yml" -Pattern 'LOCAL_AI_IMAGE_TAG:-([0-9]+\.[0-9]+\.[0-9]+)' | Select-Object -First 1).Matches.Groups[1].Value
-if (-not $CURRENT_TAG) { $CURRENT_TAG = "latest" }
+# Always download the latest .env.example (single source of truth for release values)
+Write-Info "Downloading .env template ..."
+Invoke-WebRequest "$BASE_URL/.env.example" -OutFile ".env.example" -UseBasicParsing
+Write-OK ".env.example downloaded"
 
-# 10. Create .env (never overwrite existing)
+# Extract release-controlled values from .env.example
+$envExample    = Get-Content ".env.example"
+$releasePrefix = ($envExample | Where-Object { $_ -match '^LOCAL_AI_IMAGE_PREFIX=(.+)$' } | ForEach-Object { $matches[1].Trim() } | Select-Object -First 1)
+$releaseTag    = ($envExample | Where-Object { $_ -match '^LOCAL_AI_IMAGE_TAG=(.+)$' }    | ForEach-Object { $matches[1].Trim() } | Select-Object -First 1)
+if (-not $releasePrefix -or -not $releaseTag) {
+    Write-Fail ".env.example missing LOCAL_AI_IMAGE_PREFIX/TAG"
+}
+
+# 10. Create or update .env
+# - Fresh install: copy .env.example, generate secrets.
+# - Existing install: preserve user secrets but force-update LOCAL_AI_IMAGE_PREFIX/TAG
+#   so old installs upgrade to the new Docker Hub account / version automatically.
 if (Test-Path ".env") {
-    Write-OK ".env already exists - keeping your existing settings"
+    Write-OK ".env already exists - preserving your secrets"
+    $envContent = Get-Content ".env" -Raw
+    $envContent = $envContent -replace '(?m)^LOCAL_AI_IMAGE_PREFIX=.*', "LOCAL_AI_IMAGE_PREFIX=$releasePrefix"
+    $envContent = $envContent -replace '(?m)^LOCAL_AI_IMAGE_TAG=.*',    "LOCAL_AI_IMAGE_TAG=$releaseTag"
+    Set-Content ".env" -Value $envContent -Encoding UTF8 -NoNewline
+    Write-OK "Synced LOCAL_AI_IMAGE_PREFIX=$releasePrefix, LOCAL_AI_IMAGE_TAG=$releaseTag"
 } else {
     Write-Info "Creating .env ..."
 
+    # Generate secure random secrets (hex)
     $chars      = (48..57) + (97..102)
     $secret     = -join ($chars | Get-Random -Count 64 | ForEach-Object { [char]$_ })
     $ragKey     = -join ($chars | Get-Random -Count 48 | ForEach-Object { [char]$_ })
     $whisperKey = -join ($chars | Get-Random -Count 48 | ForEach-Object { [char]$_ })
     $updaterKey = -join ($chars | Get-Random -Count 48 | ForEach-Object { [char]$_ })
 
-    @"
-# PostgreSQL
-POSTGRES_USER=localai
-POSTGRES_PASSWORD=localai_dev
-POSTGRES_DB=localai
-
-# Django
-DATABASE_URL=postgresql://localai:localai_dev@postgres:5432/localai
-DJANGO_SECRET_KEY=$secret
-DJANGO_DEBUG=false
-CORS_ALLOWED_ORIGINS=http://local-ai.localhost
-
-# RAG service
-RAG_API_KEY=$ragKey
-RAG_SERVICE_URL=http://rag:8080
-
-# Ollama
-OLLAMA_BASE_URL=http://ollama:11434
-
-# Backend URL (used by Next.js to reach Django inside Docker)
-BACKEND_URL=http://django:8000
-
-# RAG URL (used by Next.js to reach RAG service inside Docker)
-RAG_URL=http://rag:8080
-
-# Whisper
-WHISPER_API_KEY=$whisperKey
-WHISPER_MODEL=base
-
-# Docker Hub images
-LOCAL_AI_IMAGE_PREFIX=rizwanhameed360s
-LOCAL_AI_IMAGE_TAG=$CURRENT_TAG
-
-# Compose profiles
-COMPOSE_PROFILES=container-ollama
-
-# Updater
-UPDATER_SERVICE_URL=http://updater:8070
-UPDATER_API_KEY=$updaterKey
-"@ | Set-Content ".env" -Encoding UTF8
+    # Copy template, then replace placeholder secrets
+    Copy-Item ".env.example" ".env"
+    $envContent = Get-Content ".env" -Raw
+    $envContent = $envContent -replace 'DJANGO_SECRET_KEY=change-me-in-production', "DJANGO_SECRET_KEY=$secret"
+    $envContent = $envContent -replace 'RAG_API_KEY=dev-rag-key-change-me',         "RAG_API_KEY=$ragKey"
+    $envContent = $envContent -replace 'WHISPER_API_KEY=change-me-in-production',   "WHISPER_API_KEY=$whisperKey"
+    $envContent = $envContent -replace 'UPDATER_API_KEY=change-me-in-production',   "UPDATER_API_KEY=$updaterKey"
+    Set-Content ".env" -Value $envContent -Encoding UTF8 -NoNewline
 
     Write-OK "Generated secure secret keys"
     Write-OK ".env created"

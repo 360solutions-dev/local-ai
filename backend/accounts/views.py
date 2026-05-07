@@ -77,10 +77,11 @@ class RegisterView(APIView):
         )
 
         # Ensure default Ollama provider exists (may be missing after factory reset)
-        if not Provider.objects.filter(type="ollama").exists():
-            from urllib.parse import urlparse
-            import requests as http_requests
+        from urllib.parse import urlparse
+        import requests as http_requests
 
+        ollama_provider = Provider.objects.filter(type="ollama").first()
+        if not ollama_provider:
             ollama_provider = Provider.objects.create(
                 name="Ollama",
                 icon="\U0001F9E0",
@@ -90,22 +91,27 @@ class RegisterView(APIView):
                 is_default=True,
                 is_connected=False,
             )
-            # Check if Ollama service is reachable
-            try:
-                endpoint = ollama_provider.endpoint.rstrip("/")
-                parsed = urlparse(endpoint)
-                hostname = parsed.hostname or ""
-                port = parsed.port or 80
-                docker_map = {("localhost", 11434): "ollama", ("127.0.0.1", 11434): "ollama"}
-                docker_host = docker_map.get((hostname, port))
-                if docker_host:
-                    endpoint = f"{parsed.scheme}://{docker_host}:{port}"
-                resp = http_requests.get(f"{endpoint}/api/tags", timeout=3)
-                resp.raise_for_status()
+
+        # Auto-connect Ollama on registration so the user doesn't have to
+        # manually click "Connect" in the UI (matches Whisper's UX).
+        try:
+            endpoint = ollama_provider.endpoint.rstrip("/")
+            parsed = urlparse(endpoint)
+            hostname = parsed.hostname or ""
+            port = parsed.port or 80
+            docker_map = {("localhost", 11434): "ollama", ("127.0.0.1", 11434): "ollama"}
+            docker_host = docker_map.get((hostname, port))
+            if docker_host:
+                endpoint = f"{parsed.scheme}://{docker_host}:{port}"
+            resp = http_requests.get(f"{endpoint}/api/tags", timeout=3)
+            resp.raise_for_status()
+            if not ollama_provider.is_connected:
                 ollama_provider.is_connected = True
                 ollama_provider.save(update_fields=["is_connected"])
-            except Exception:
-                pass
+        except Exception:
+            if ollama_provider.is_connected:
+                ollama_provider.is_connected = False
+                ollama_provider.save(update_fields=["is_connected"])
 
         response = Response(
             {

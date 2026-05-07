@@ -161,6 +161,13 @@ const fr: Translations = {
   "settings.advanced.updateFailed": "La mise à jour a échoué. Veuillez réessayer ou mettre à jour manuellement.",
   "settings.advanced.updateTimeout": "La mise à jour prend plus de temps que prévu. Essayez de rafraîchir la page ou exécutez 'docker compose up -d' manuellement.",
   "settings.advanced.checkFailed": "Impossible de vérifier les mises à jour.",
+  "settings.advanced.updateStage.starting": "Préparation de la mise à jour...",
+  "settings.advanced.updateStage.pulling": "Téléchargement des nouvelles images...",
+  "settings.advanced.updateStage.writing-env": "Enregistrement de la nouvelle version...",
+  "settings.advanced.updateStage.starting-containers": "Démarrage des conteneurs...",
+  "settings.advanced.updateStage.log": "En cours...",
+  "settings.advanced.updateStage.complete": "Mise à jour terminée !",
+  "settings.advanced.updateStage.error": "Erreur de mise à jour.",
   "settings.saved": "Paramètres enregistrés avec succès.",
 
   "updateNotifier.title": "Mise à jour disponible",

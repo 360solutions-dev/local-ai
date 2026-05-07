@@ -161,6 +161,13 @@ const es: Translations = {
   "settings.advanced.updateFailed": "La actualización falló. Inténtalo de nuevo o actualiza manualmente.",
   "settings.advanced.updateTimeout": "La actualización está tardando más de lo esperado. Intenta refrescar la página o ejecuta 'docker compose up -d' manualmente.",
   "settings.advanced.checkFailed": "No se pudo buscar actualizaciones.",
+  "settings.advanced.updateStage.starting": "Preparando actualización...",
+  "settings.advanced.updateStage.pulling": "Descargando nuevas imágenes...",
+  "settings.advanced.updateStage.writing-env": "Guardando nueva versión...",
+  "settings.advanced.updateStage.starting-containers": "Iniciando contenedores...",
+  "settings.advanced.updateStage.log": "Trabajando...",
+  "settings.advanced.updateStage.complete": "¡Actualización completa!",
+  "settings.advanced.updateStage.error": "Error de actualización.",
   "settings.saved": "Configuración guardada correctamente.",
 
   "updateNotifier.title": "Actualización disponible",
