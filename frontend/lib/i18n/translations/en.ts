@@ -421,6 +421,7 @@ const en = {
   "chat.rename": "Rename",
   "chat.delete": "Delete",
   "chat.duplicate": "Duplicate",
+  "chat.fileEmpty": "The selected file is empty or unreadable. Please choose another file.",
   "chat.duplicating": "Duplicating chat...",
   "chat.duplicated": "Chat duplicated",
   "chat.duplicateError": "Couldn't duplicate chat",

@@ -407,6 +407,7 @@ const es: Translations = {
   "chat.rename": "Renombrar",
   "chat.delete": "Eliminar",
   "chat.duplicate": "Duplicar",
+  "chat.fileEmpty": "El archivo seleccionado está vacío o no se puede leer. Por favor, elija otro archivo.",
   "chat.duplicating": "Duplicando chat...",
   "chat.duplicated": "Chat duplicado",
   "chat.duplicateError": "No se pudo duplicar el chat",

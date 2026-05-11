@@ -407,6 +407,7 @@ const ja: Translations = {
   "chat.rename": "名前を変更",
   "chat.delete": "削除",
   "chat.duplicate": "複製",
+  "chat.fileEmpty": "選択したファイルは空であるか、読み取れません。別のファイルを選択してください。",
   "chat.duplicating": "チャットを複製中...",
   "chat.duplicated": "チャットを複製しました",
   "chat.duplicateError": "チャットを複製できませんでした",

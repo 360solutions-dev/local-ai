@@ -407,6 +407,7 @@ const zh: Translations = {
   "chat.rename": "重命名",
   "chat.delete": "删除",
   "chat.duplicate": "复制",
+  "chat.fileEmpty": "所选文件为空或无法读取。请选择其他文件。",
   "chat.duplicating": "正在复制对话...",
   "chat.duplicated": "对话已复制",
   "chat.duplicateError": "无法复制对话",

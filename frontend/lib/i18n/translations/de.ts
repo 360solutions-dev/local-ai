@@ -407,6 +407,7 @@ const de: Translations = {
   "chat.rename": "Umbenennen",
   "chat.delete": "Löschen",
   "chat.duplicate": "Duplizieren",
+  "chat.fileEmpty": "Die ausgewählte Datei ist leer oder unlesbar. Bitte wählen Sie eine andere Datei.",
   "chat.duplicating": "Chat wird dupliziert...",
   "chat.duplicated": "Chat dupliziert",
   "chat.duplicateError": "Chat konnte nicht dupliziert werden",

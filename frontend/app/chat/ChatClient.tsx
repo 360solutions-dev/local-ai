@@ -169,6 +169,10 @@ export default function ChatClient() {
 
   const processFileForUpload = useCallback(
     async (file: File) => {
+      if (!file || file.size === 0) {
+        showToast(t("chat.fileEmpty"));
+        return;
+      }
       const res = await apiGet<EmbeddingModelsStatus>("/api/chat/embedding-models/");
       if (!res.ok || !res.data) {
         uploadFile.mutate(file);
@@ -188,7 +192,7 @@ export default function ChatClient() {
       setPendingPdfFile(file);
       setEmbeddingModalOpen(true);
     },
-    [modelConfig?.embedding_model, uploadFile],
+    [modelConfig?.embedding_model, uploadFile, showToast, t],
   );
 
   const embeddingChoices = useMemo(() => {

@@ -650,6 +650,12 @@ class FileUploadView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if uploaded_file.size == 0:
+            return Response(
+                {"error": {"code": "EMPTY_FILE", "message": "The uploaded file is empty. Please choose a non-empty file."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Enforce file size limit
         settings_obj = InstanceSettings.get_or_create_singleton()
         max_bytes = settings_obj.max_file_size_mb * 1024 * 1024
