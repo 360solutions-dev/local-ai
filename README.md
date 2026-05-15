@@ -6,7 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-required-blue.svg)](https://docs.docker.com/get-docker/)
-[![Discord](https://img.shields.io/badge/Discord-join-5865F2.svg)](https://discord.gg/your-invite-here)
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2.svg)](https://discord.gg/vndd7TzhVU)
 [![GitHub stars](https://img.shields.io/github/stars/your-org/local-ai?style=social)](https://github.com/your-org/local-ai)
 
 </div>
@@ -159,7 +159,7 @@ Full guide: [OFFLINE_INSTALL.md](./OFFLINE_INSTALL.md)
 
 ## Community & Support
 
-- **Discord** — Live chat, install help, feature discussions: [Join](https://discord.gg/your-invite-here)
+- **Discord** — Live chat, install help, feature discussions: [Join](https://discord.gg/vndd7TzhVU)
 - **GitHub Discussions** — Long-form Q&A and ideas
 - **GitHub Issues** — Bug reports and feature requests (use the templates)
 - **Docs** — [docs.local-ai.run](https://docs.local-ai.run)
@@ -188,6 +188,6 @@ MIT. See [LICENSE](./LICENSE).
 
 Made by people who got tired of mailing PDFs to OpenAI.
 
-[Website](https://local-ai.run) · [Docs](https://docs.local-ai.run) · [Discord](https://discord.gg/your-invite-here) · [GitHub](https://github.com/your-org/local-ai)
+[Website](https://local-ai.run) · [Docs](https://docs.local-ai.run) · [Discord](https://discord.gg/vndd7TzhVU) · [GitHub](https://github.com/your-org/local-ai)
 
 </div>
