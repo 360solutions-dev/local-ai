@@ -65,17 +65,43 @@ def answer_question(
 ) -> Tuple[str, List[Document]]:
     """
     Run RAG: retrieve relevant chunks, then generate an answer.
-    Supports both Ollama and OpenAI-compatible providers.
+
+    file_filter accepts either a single filename or a comma-separated list
+    of filenames (used by Django to scope per-chat). When supplied, we use
+    the underlying vector store's similarity_search with metadata filtering
+    so that we get top_k *relevant chunks from the allowed files* — rather
+    than retrieving top_k overall and post-filtering, which can return zero
+    results when the dominant file in the index isn't in the allowed set.
+
     Returns (answer_text, list of source documents used).
     """
-    if hasattr(retriever, "invoke"):
-        docs = retriever.invoke(question)
-    else:
-        docs = retriever.get_relevant_documents(question)
-
-    # Filter to a specific file if requested
+    allowed: set[str] | None = None
     if file_filter:
-        docs = [d for d in docs if d.metadata.get("filename") == file_filter][:top_k]
+        allowed = {n.strip() for n in file_filter.split(",") if n.strip()}
+
+    docs: List[Document] = []
+    if allowed:
+        vs = getattr(retriever, "vectorstore", None)
+        if vs is not None and hasattr(vs, "similarity_search"):
+            # Vector-level filter so we get top-k *from the allowed files*,
+            # not top-k overall then post-filter. langchain FAISS first
+            # fetches `fetch_k` candidates by similarity then applies the
+            # filter — fetch_k default is 20 which is FAR too small when
+            # one document dominates the index. Use a large fetch_k so
+            # the filter has enough candidates to find chunks from the
+            # allowed files.
+            def _allowed(meta: dict) -> bool:
+                return meta.get("filename") in allowed
+
+            docs = vs.similarity_search(
+                question, k=top_k, fetch_k=2000, filter=_allowed,
+            )
+        else:
+            # Fallback when retriever doesn't expose vectorstore
+            raw = retriever.invoke(question) if hasattr(retriever, "invoke") else retriever.get_relevant_documents(question)
+            docs = [d for d in raw if d.metadata.get("filename") in allowed][:top_k]
+    else:
+        docs = retriever.invoke(question) if hasattr(retriever, "invoke") else retriever.get_relevant_documents(question)
 
     context = _format_docs(docs)
     chain = build_rag_chain(base_url=base_url, model=model, provider_type=provider_type)

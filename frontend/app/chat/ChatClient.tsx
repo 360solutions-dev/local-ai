@@ -139,7 +139,7 @@ export default function ChatClient() {
     setToast(msg);
     setTimeout(() => setToast(null), 2500);
   }, []);
-  const { data: indexedFiles = [], isLoading: filesLoading } = useIndexedFiles();
+  const { data: indexedFiles = [], isLoading: filesLoading } = useIndexedFiles(activeChatId);
   const uploadFile = useUploadFile();
   const deleteFile = useDeleteFile();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -167,6 +167,30 @@ export default function ChatClient() {
   // Track that we started an embedding pull so the completion effect knows to finish up
   const embeddingPullPendingRef = useRef<{ model: string; file: File | null } | null>(null);
 
+  /**
+   * Ensure we have an active conversation_id before uploading a file.
+   * If activeChatId is null (e.g., user hit "+ New Chat" but hasn't sent
+   * a message yet), lazily create a conversation and switch to it. The
+   * upload endpoint requires a conversation_id so files are scoped per-chat.
+   */
+  const ensureChatThenUpload = useCallback(
+    async (file: File) => {
+      let cid = activeChatId;
+      if (!cid) {
+        try {
+          const conv = await createConversation.mutateAsync(undefined);
+          cid = conv.id;
+          setActiveChatId(cid);
+        } catch (err) {
+          showToast(err instanceof Error ? err.message : "Failed to create chat.");
+          return;
+        }
+      }
+      uploadFile.mutate({ file, conversationId: cid });
+    },
+    [activeChatId, createConversation, uploadFile, showToast],
+  );
+
   const processFileForUpload = useCallback(
     async (file: File) => {
       if (!file || file.size === 0) {
@@ -175,11 +199,11 @@ export default function ChatClient() {
       }
       const res = await apiGet<EmbeddingModelsStatus>("/api/chat/embedding-models/");
       if (!res.ok || !res.data) {
-        uploadFile.mutate(file);
+        ensureChatThenUpload(file);
         return;
       }
       if (res.data.installed) {
-        uploadFile.mutate(file);
+        ensureChatThenUpload(file);
         return;
       }
       setEmbeddingStatusSnapshot(res.data);
@@ -192,7 +216,7 @@ export default function ChatClient() {
       setPendingPdfFile(file);
       setEmbeddingModalOpen(true);
     },
-    [modelConfig?.embedding_model, uploadFile, showToast, t],
+    [modelConfig?.embedding_model, ensureChatThenUpload, showToast, t],
   );
 
   const embeddingChoices = useMemo(() => {
@@ -244,7 +268,7 @@ export default function ChatClient() {
       setPendingPdfFile(null);
       setEmbeddingStatusSnapshot(null);
       if (file) {
-        uploadFile.mutate(file);
+        ensureChatThenUpload(file);
       }
     } catch (err) {
       setEmbeddingModalError(err instanceof Error ? err.message : "Failed to prepare embedding model.");
@@ -274,7 +298,7 @@ export default function ChatClient() {
           setPendingPdfFile(null);
           setEmbeddingStatusSnapshot(null);
           if (file) {
-            uploadFile.mutate(file);
+            ensureChatThenUpload(file);
           }
         } catch (err) {
           setEmbeddingModalError(err instanceof Error ? err.message : "Failed to save config.");
@@ -283,7 +307,7 @@ export default function ChatClient() {
         }
       })();
     }
-  }, [isPulling, providers, updateModelConfig, uploadFile]);
+  }, [isPulling, providers, updateModelConfig, ensureChatThenUpload]);
 
   // `isSwitchingRef` is set to true just before `setActiveChatId` inside
   // handleSend so the ambient chat-switch cleanup effect doesn't nuke the
@@ -1279,7 +1303,12 @@ export default function ChatClient() {
                       <button
                         type="button"
                         className="opacity-0 group-hover:opacity-100 bg-transparent border-none text-text-dim cursor-pointer text-[0.8rem] px-1 py-0.5 rounded transition-all hover:text-danger"
-                        onClick={() => deleteFile.mutate(f.id)}
+                        disabled={!activeChatId}
+                        onClick={() => {
+                          if (activeChatId) {
+                            deleteFile.mutate({ fileId: f.id, conversationId: activeChatId });
+                          }
+                        }}
                       >
                         ✕
                       </button>

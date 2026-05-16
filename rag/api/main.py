@@ -233,6 +233,7 @@ class AskRequest(PydanticModel):
     base_url: str | None = None
     provider_type: str | None = None  # "ollama" or "openai"
     file_filter: str | None = None
+    embedding_model: str | None = None  # override for query embedding
 
 
 # ---------------------------------------------------------------------------
@@ -247,9 +248,18 @@ _cached_vs = None
 _cached_index_mtime = None
 
 
-def _get_cached_index():
-    """Return cached FAISS vector store and embeddings. Reload if index file changed."""
-    global _cached_embeddings, _cached_vs, _cached_index_mtime
+_cached_embedding_model = None
+
+
+def _get_cached_index(embedding_model: str | None = None):
+    """Return cached FAISS vector store and embeddings.
+
+    The embedding model used must match the one that indexed the documents
+    or queries will return zero hits (or fail outright on dim mismatch).
+    Pass embedding_model from the caller (Django reads it from ModelConfig);
+    falls back to config.EMBEDDING_MODEL only if not provided.
+    """
+    global _cached_embeddings, _cached_vs, _cached_index_mtime, _cached_embedding_model
 
     from config import EMBEDDING_MODEL, OLLAMA_BASE_URL, PERSIST_DIRECTORY
 
@@ -260,21 +270,27 @@ def _get_cached_index():
         return None, None
 
     current_mtime = index_file.stat().st_mtime
+    model_to_use = embedding_model or EMBEDDING_MODEL
 
     with _index_lock:
-        if _cached_vs is not None and _cached_index_mtime == current_mtime:
+        if (
+            _cached_vs is not None
+            and _cached_index_mtime == current_mtime
+            and _cached_embedding_model == model_to_use
+        ):
             return _cached_embeddings, _cached_vs
 
         from langchain_community.vectorstores import FAISS
         from langchain_ollama import OllamaEmbeddings
 
-        embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL, base_url=OLLAMA_BASE_URL)
+        embeddings = OllamaEmbeddings(model=model_to_use, base_url=OLLAMA_BASE_URL)
         vs_loaded = FAISS.load_local(
             str(store_path), embeddings, allow_dangerous_deserialization=True
         )
         _cached_embeddings = embeddings
         _cached_vs = vs_loaded
         _cached_index_mtime = current_mtime
+        _cached_embedding_model = model_to_use
         return _cached_embeddings, _cached_vs
 
 
@@ -299,7 +315,7 @@ def ask_question(req: AskRequest):
     llm_base_url = req.base_url or OLLAMA_BASE_URL
     llm_provider_type = req.provider_type or "ollama"
 
-    embeddings, cached_vs = _get_cached_index()
+    embeddings, cached_vs = _get_cached_index(req.embedding_model)
     if cached_vs is None:
         return {
             "answer": "No documents have been indexed yet. Please upload and index files first to get AI-powered answers.",

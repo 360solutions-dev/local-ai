@@ -56,7 +56,9 @@ export default function DashboardClient() {
   const { t } = useTranslation();
 
   const { conversations, isLoading: loadingChats } = useFlatConversations();
-  const { data: files, isLoading: loadingFiles } = useIndexedFiles();
+  // Files are now scoped per-chat; the dashboard intentionally shows 0
+  // until a future "all files across chats" endpoint is added.
+  const { data: files, isLoading: loadingFiles } = useIndexedFiles(null);
   const { data: models, isLoading: loadingModels } = useOllamaModels();
   const { data: health, isLoading: loadingHealth } = useSystemHealth();
 

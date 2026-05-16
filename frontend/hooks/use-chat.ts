@@ -663,14 +663,23 @@ export interface IndexedFile {
   type: string;
 }
 
-export function useIndexedFiles() {
+/**
+ * List files indexed for a specific chat. When conversationId is null
+ * (e.g., a new chat before any message), returns an empty list — the
+ * backend strictly scopes by conversation_id, no global file access.
+ */
+export function useIndexedFiles(conversationId: number | null) {
   return useQuery({
-    queryKey: ["chat", "files"],
+    queryKey: ["chat", "files", conversationId],
     queryFn: async () => {
-      const res = await apiGet<{ files: IndexedFile[] }>("/api/chat/files/");
+      if (!conversationId) return [];
+      const res = await apiGet<{ files: IndexedFile[] }>(
+        `/api/chat/files/?conversation_id=${conversationId}`,
+      );
       if (!res.ok) return [];
       return res.data.files;
     },
+    enabled: conversationId !== null,
     refetchOnWindowFocus: true,
   });
 }
@@ -679,10 +688,17 @@ export function useUploadFile() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async ({
+      file,
+      conversationId,
+    }: {
+      file: File;
+      conversationId: number;
+    }) => {
       const res = await apiUpload<{ file: IndexedFile }>(
         "/api/chat/files/upload/",
         file,
+        { conversation_id: String(conversationId) },
       );
       if (!res.ok) {
         throw new Error(
@@ -690,10 +706,12 @@ export function useUploadFile() {
             ?.message || "Failed to upload file.",
         );
       }
-      return res.data.file;
+      return { file: res.data.file, conversationId };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["chat", "files"] });
+    onSuccess: ({ conversationId }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["chat", "files", conversationId],
+      });
     },
   });
 }
@@ -702,18 +720,27 @@ export function useDeleteFile() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (fileId: string) => {
-      const res = await apiDelete(`/api/chat/files/${fileId}/`);
+    mutationFn: async ({
+      fileId,
+      conversationId,
+    }: {
+      fileId: string;
+      conversationId: number;
+    }) => {
+      const res = await apiDelete(
+        `/api/chat/files/${fileId}/?conversation_id=${conversationId}`,
+      );
       if (!res.ok) {
         throw new Error(
           (res.data as { error?: { message?: string } })?.error?.message ||
             "Failed to delete file.",
         );
       }
-      return res.data;
+      return { ...res.data, conversationId };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["chat", "files"] });
+    onSuccess: (data) => {
+      const cid = (data as { conversationId: number }).conversationId;
+      queryClient.invalidateQueries({ queryKey: ["chat", "files", cid] });
       queryClient.invalidateQueries({ queryKey: ["system", "storage"] });
     },
   });
