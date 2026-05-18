@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-required-blue.svg)](https://docs.docker.com/get-docker/)
 [![Discord](https://img.shields.io/badge/Discord-join-5865F2.svg)](https://discord.gg/vndd7TzhVU)
-[![GitHub stars](https://img.shields.io/github/stars/your-org/local-ai?style=social)](https://github.com/your-org/local-ai)
+[![GitHub stars](https://img.shields.io/github/stars/360solutions-dev/local-ai?style=social)](https://github.com/360solutions-dev/local-ai)
 
 </div>
 
@@ -22,7 +22,7 @@ That's it. The installer detects Docker, pulls the pre-built images, prompts for
 > Requires Docker Desktop (Mac/Windows) or Docker Engine (Linux). 8 GB RAM minimum, 16 GB recommended for larger models.
 
 <p align="center">
-  <img src="./docs/demo.gif" alt="local-ai.run demo" width="800"/>
+  <img src="./docs/demo.gif" alt="local-ai.run demo" width="800" loading="eager" decoding="sync" fetchpriority="high"/>
 </p>
 
 ## What It Is
@@ -70,7 +70,7 @@ If you prefer to inspect the install steps:
 
 ```bash
 # 1. Clone
-git clone https://github.com/your-org/local-ai.git
+git clone https://github.com/360solutions-dev/local-ai.git
 cd local-ai
 
 # 2. Setup environment
@@ -93,7 +93,7 @@ open http://local-ai.localhost
 For development or to customize images:
 
 ```bash
-git clone https://github.com/your-org/local-ai.git
+git clone https://github.com/360solutions-dev/local-ai.git
 cd local-ai
 cp .env.example .env
 docker compose up --build -d
@@ -139,7 +139,7 @@ docker compose -f docker-compose.release.yml up -d
 
 ## Roadmap
 
-See the [public project board](https://github.com/your-org/local-ai/projects).
+See the [public project board](https://github.com/360solutions-dev/local-ai/projects).
 
 Planned for next releases:
 - Image generation (Stable Diffusion via local backend)
@@ -171,7 +171,7 @@ PRs welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, code style, and
 Quick start for contributors:
 
 ```bash
-git clone https://github.com/your-org/local-ai.git
+git clone https://github.com/360solutions-dev/local-ai.git
 cd local-ai
 cp .env.example .env
 docker compose up --build -d
@@ -188,6 +188,6 @@ MIT. See [LICENSE](./LICENSE).
 
 Made by people who got tired of mailing PDFs to OpenAI.
 
-[Website](https://local-ai.run) · [Docs](https://docs.local-ai.run) · [Discord](https://discord.gg/vndd7TzhVU) · [GitHub](https://github.com/your-org/local-ai)
+[Website](https://local-ai.run) · [Docs](https://docs.local-ai.run) · [Discord](https://discord.gg/vndd7TzhVU) · [GitHub](https://github.com/360solutions-dev/local-ai)
 
 </div>

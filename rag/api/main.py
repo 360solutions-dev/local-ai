@@ -381,7 +381,7 @@ async def upload_file(
     from vector_store import VectorStoreManager
 
     # Validate file type
-    allowed = {".pdf", ".docx", ".doc", ".txt", ".md", ".csv"}
+    allowed = {".pdf", ".docx", ".doc", ".txt", ".md", ".csv", ".xlsx", ".xls"}
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in allowed:
         return {"error": f"Unsupported file type: {suffix}", "supported": list(allowed)}

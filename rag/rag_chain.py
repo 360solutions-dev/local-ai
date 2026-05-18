@@ -93,8 +93,12 @@ def answer_question(
             def _allowed(meta: dict) -> bool:
                 return meta.get("filename") in allowed
 
+            # fetch_k must be large enough to include chunks from filtered
+            # files even when one large file dominates the index, but not so
+            # large that we scan the entire vector store unnecessarily.
+            # 500 is a good balance for indexes up to ~5000 chunks.
             docs = vs.similarity_search(
-                question, k=top_k, fetch_k=2000, filter=_allowed,
+                question, k=top_k, fetch_k=500, filter=_allowed,
             )
         else:
             # Fallback when retriever doesn't expose vectorstore

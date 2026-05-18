@@ -19,7 +19,7 @@ You'll need:
 
 ```bash
 # 1. Fork and clone
-git clone https://github.com/your-fork/local-ai.git
+git clone https://github.com/360solutions-dev/local-ai.git
 cd local-ai
 
 # 2. Copy env template

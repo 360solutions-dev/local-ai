@@ -1,4 +1,4 @@
-"""Load and chunk documents (PDF, DOCX, TXT) for RAG."""
+"""Load and chunk documents (PDF, DOCX, XLSX, TXT) for RAG."""
 
 import os
 from pathlib import Path
@@ -13,6 +13,31 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from config import CHUNK_OVERLAP, CHUNK_SIZE
+
+
+def _load_xlsx(file_path: str) -> List[Document]:
+    """Read an .xlsx/.xls file into Documents (one per sheet).
+
+    openpyxl reads only cell values; this approach avoids heavier deps like
+    `unstructured` or `pandas`. Each sheet becomes a Document with newline-
+    separated rows so the text splitter has natural break points.
+    """
+    from openpyxl import load_workbook
+
+    wb = load_workbook(file_path, data_only=True, read_only=True)
+    docs: List[Document] = []
+    for sheet in wb.worksheets:
+        rows_text: List[str] = []
+        for row in sheet.iter_rows(values_only=True):
+            cells = [str(c) if c is not None else "" for c in row]
+            if any(cells):
+                rows_text.append("\t".join(cells))
+        if not rows_text:
+            continue
+        page_content = f"Sheet: {sheet.title}\n" + "\n".join(rows_text)
+        docs.append(Document(page_content=page_content, metadata={"sheet": sheet.title}))
+    wb.close()
+    return docs
 
 
 class DocumentProcessor:
@@ -42,6 +67,8 @@ class DocumentProcessor:
             loader = Docx2txtLoader(file_path)
         elif suffix == ".txt":
             loader = TextLoader(file_path, encoding="utf-8", autodetect_encoding=True)
+        elif suffix in (".xlsx", ".xls"):
+            return _load_xlsx(file_path)
         else:
             raise ValueError(f"Unsupported file type: {suffix}")
 
