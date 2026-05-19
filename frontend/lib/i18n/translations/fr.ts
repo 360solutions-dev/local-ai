@@ -408,6 +408,9 @@ const fr: Translations = {
   "chat.delete": "Supprimer",
   "chat.duplicate": "Dupliquer",
   "chat.fileEmpty": "Le fichier sélectionné est vide ou illisible. Veuillez choisir un autre fichier.",
+  "chat.uploadingIndexing": "Téléchargement et indexation...",
+  "chat.uploadFailed": "Échec du téléchargement du fichier.",
+  "chat.fileTypeUnsupported": "Les fichiers {ext} ne sont pas pris en charge. Essayez PDF, DOCX, XLSX, CSV, TXT ou MD.",
 
   "recovery.onboardingTitle": "Enregistrez votre code de récupération",
   "recovery.onboardingSubtitle": "C'est la seule façon de récupérer votre compte si vous oubliez votre mot de passe. Conservez-le dans un endroit sûr — il ne sera plus affiché.",

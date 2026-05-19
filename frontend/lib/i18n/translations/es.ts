@@ -408,6 +408,9 @@ const es: Translations = {
   "chat.delete": "Eliminar",
   "chat.duplicate": "Duplicar",
   "chat.fileEmpty": "El archivo seleccionado está vacío o no se puede leer. Por favor, elija otro archivo.",
+  "chat.uploadingIndexing": "Subiendo e indexando...",
+  "chat.uploadFailed": "Error al subir el archivo.",
+  "chat.fileTypeUnsupported": "Los archivos {ext} no son compatibles. Prueba PDF, DOCX, XLSX, CSV, TXT o MD.",
 
   "recovery.onboardingTitle": "Guarda tu código de recuperación",
   "recovery.onboardingSubtitle": "Esta es la única forma de recuperar tu cuenta si olvidas tu contraseña. Guárdalo en un lugar seguro — no se volverá a mostrar.",

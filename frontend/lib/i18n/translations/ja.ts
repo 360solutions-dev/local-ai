@@ -408,6 +408,9 @@ const ja: Translations = {
   "chat.delete": "削除",
   "chat.duplicate": "複製",
   "chat.fileEmpty": "選択したファイルは空であるか、読み取れません。別のファイルを選択してください。",
+  "chat.uploadingIndexing": "アップロードしてインデックス中...",
+  "chat.uploadFailed": "ファイルのアップロードに失敗しました。",
+  "chat.fileTypeUnsupported": "{ext} ファイルはサポートされていません。PDF、DOCX、XLSX、CSV、TXT、または MD をお試しください。",
 
   "recovery.onboardingTitle": "リカバリコードを保存してください",
   "recovery.onboardingSubtitle": "パスワードを忘れた場合にアカウントを復元できる唯一の方法です。安全な場所に保管してください — 再表示されません。",

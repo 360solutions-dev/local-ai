@@ -422,6 +422,9 @@ const en = {
   "chat.delete": "Delete",
   "chat.duplicate": "Duplicate",
   "chat.fileEmpty": "The selected file is empty or unreadable. Please choose another file.",
+  "chat.uploadingIndexing": "Uploading & indexing...",
+  "chat.uploadFailed": "Failed to upload file.",
+  "chat.fileTypeUnsupported": "{ext} files are not supported. Try PDF, DOCX, XLSX, CSV, TXT, or MD.",
 
   // Recovery code (forgot-password flow)
   "recovery.onboardingTitle": "Save your recovery code",

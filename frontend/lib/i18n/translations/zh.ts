@@ -408,6 +408,9 @@ const zh: Translations = {
   "chat.delete": "删除",
   "chat.duplicate": "复制",
   "chat.fileEmpty": "所选文件为空或无法读取。请选择其他文件。",
+  "chat.uploadingIndexing": "正在上传并索引...",
+  "chat.uploadFailed": "文件上传失败。",
+  "chat.fileTypeUnsupported": "不支持 {ext} 文件。请尝试 PDF、DOCX、XLSX、CSV、TXT 或 MD。",
 
   "recovery.onboardingTitle": "保存您的恢复代码",
   "recovery.onboardingSubtitle": "如果您忘记密码，这是恢复账户的唯一方式。请保存在安全的地方 — 它不会再次显示。",

@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowRight, Check, Copy, Ellipsis, Mic, Pencil, Trash2 } from "lucide-react";
+import { ArrowRight, Check, Copy, Ellipsis, Loader2, Mic, Pencil, Trash2, Upload } from "lucide-react";
 import Sidebar from "@/components/layout/Sidebar";
 import VoiceInput from "@/components/ui/VoiceInput";
 import Toast from "@/components/ui/Toast";
@@ -182,19 +182,33 @@ export default function ChatClient() {
           cid = conv.id;
           setActiveChatId(cid);
         } catch (err) {
-          showToast(err instanceof Error ? err.message : "Failed to create chat.");
+          showToast(err instanceof Error ? err.message : t("chat.uploadFailed"));
           return;
         }
       }
-      uploadFile.mutate({ file, conversationId: cid });
+      uploadFile.mutate(
+        { file, conversationId: cid },
+        {
+          onError: (err) => {
+            showToast(err instanceof Error ? err.message : t("chat.uploadFailed"));
+          },
+        },
+      );
     },
-    [activeChatId, createConversation, uploadFile, showToast],
+    [activeChatId, createConversation, uploadFile, showToast, t],
   );
 
   const processFileForUpload = useCallback(
     async (file: File) => {
       if (!file || file.size === 0) {
         showToast(t("chat.fileEmpty"));
+        return;
+      }
+      const SUPPORTED_EXT = [".pdf", ".docx", ".xlsx", ".csv", ".txt", ".md"];
+      const name = file.name.toLowerCase();
+      const ok = SUPPORTED_EXT.some((ext) => name.endsWith(ext));
+      if (!ok) {
+        showToast(t("chat.fileTypeUnsupported", { ext: name.slice(name.lastIndexOf(".")) || name }));
         return;
       }
       const res = await apiGet<EmbeddingModelsStatus>("/api/chat/embedding-models/");
@@ -1242,9 +1256,11 @@ export default function ChatClient() {
               }}
               role="presentation"
             >
-              <div className="text-2xl mb-2">{uploadFile.isPending ? "⏳" : "📤"}</div>
-              <div className="text-[0.82rem] text-text-muted font-light">
-                {uploadFile.isPending ? "Uploading & indexing..." : t("chat.dropFiles")}
+              <div className="flex items-center justify-center mb-2 text-accent">
+                {uploadFile.isPending ? <Loader2 size={28} className="animate-spin" /> : <Upload size={28} />}
+              </div>
+              <div className={`text-[0.82rem] font-light ${uploadFile.isPending ? "text-accent" : "text-text-muted"}`}>
+                {uploadFile.isPending ? t("chat.uploadingIndexing") : t("chat.dropFiles")}
               </div>
               <div className="font-mono text-[0.68rem] text-text-dim mt-1">{t("chat.supportedFormats")}</div>
               <input

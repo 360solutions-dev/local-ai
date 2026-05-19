@@ -408,6 +408,9 @@ const de: Translations = {
   "chat.delete": "Löschen",
   "chat.duplicate": "Duplizieren",
   "chat.fileEmpty": "Die ausgewählte Datei ist leer oder unlesbar. Bitte wählen Sie eine andere Datei.",
+  "chat.uploadingIndexing": "Hochladen & Indizieren...",
+  "chat.uploadFailed": "Datei-Upload fehlgeschlagen.",
+  "chat.fileTypeUnsupported": "{ext} Dateien werden nicht unterstützt. Versuchen Sie PDF, DOCX, XLSX, CSV, TXT oder MD.",
 
   "recovery.onboardingTitle": "Wiederherstellungscode speichern",
   "recovery.onboardingSubtitle": "Dies ist die einzige Möglichkeit, Ihr Konto wiederherzustellen, wenn Sie Ihr Passwort vergessen. Bewahren Sie ihn an einem sicheren Ort auf — er wird nicht erneut angezeigt.",
