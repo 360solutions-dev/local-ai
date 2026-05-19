@@ -106,7 +106,7 @@ All settings live in `.env`. Key variables:
 | Variable | Default | Purpose |
 |---|---|---|
 | `APP_PORT` | `80` | Host port for the web UI (Caddy) — auto-detected if 80 is busy |
-| `LOCAL_AI_IMAGE_TAG` | latest release | Pinned image version (e.g. `1.0.3`) |
+| `LOCAL_AI_IMAGE_TAG` | latest release | Pinned image version (e.g. `1.0.0`) |
 | `WHISPER_MODEL` | `base` | Whisper model size: `tiny`, `base`, `small`, plus `.en` variants |
 | `COMPOSE_PROFILES` | `container-ollama` | Set blank to use host Ollama instead of bundled |
 | `OLLAMA_HOST` | `http://ollama:11434` | Point to host or remote Ollama if not using bundled |

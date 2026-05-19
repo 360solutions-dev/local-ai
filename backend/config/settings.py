@@ -37,7 +37,7 @@ INSTALLED_APPS = [
     "chat",
 ]
 
-VERSION = "1.0.3"
+VERSION = "1.0.0"
 
 # Middleware
 MIDDLEWARE = [
