@@ -8,7 +8,7 @@ BASE_URL="http://get.local-ai.run"            # where install files are hosted
 INSTALL_DIR="${LOCAL_AI_DIR:-$HOME/local-ai}" # override with LOCAL_AI_DIR env var
 MIN_DISK_GB=50
 MIN_RAM_GB=8
-REQUIRED_PORTS=(80 5433 11434 8501)
+REQUIRED_PORTS=(80)
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -111,16 +111,41 @@ info "Downloading Caddyfile ..."
 curl -fsSL "$BASE_URL/Caddyfile" -o Caddyfile
 log "Caddyfile downloaded"
 
-# Read the current release version from the compose file (no hardcoding needed)
-CURRENT_TAG=$(grep -m1 'LOCAL_AI_IMAGE_TAG:-' docker-compose.release.yml | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-CURRENT_TAG="${CURRENT_TAG:-latest}"
+# Always download the latest .env.example (single source of truth for release values)
+info "Downloading .env template ..."
+curl -fsSL "$BASE_URL/.env.example" -o .env.example
+log ".env.example downloaded"
 
-# ── 10. Create .env (never overwrite existing — would destroy user settings) ──
+# Extract release-controlled values (Docker Hub prefix + tag) from the latest .env.example
+RELEASE_PREFIX=$(grep -m1 '^LOCAL_AI_IMAGE_PREFIX=' .env.example | cut -d= -f2- | tr -d '\r')
+RELEASE_TAG=$(grep -m1 '^LOCAL_AI_IMAGE_TAG=' .env.example | cut -d= -f2- | tr -d '\r')
+RELEASE_STABLE_TAG=$(grep -m1 '^LOCAL_AI_STABLE_TAG=' .env.example | cut -d= -f2- | tr -d '\r')
+[[ -z "$RELEASE_PREFIX" || -z "$RELEASE_TAG" ]] && die ".env.example missing LOCAL_AI_IMAGE_PREFIX/TAG"
+
+# Cross-platform sed -i wrapper
+sed_inplace() {
+  if [[ "$OS" == "Darwin" ]]; then sed -i '' "$@"; else sed -i "$@"; fi
+}
+
+# ── 10. Create or update .env ────────────────────────────────────────────────
+# - Fresh install: copy from .env.example and generate secrets.
+# - Existing install: preserve user secrets but force-update release-controlled
+#   values (LOCAL_AI_IMAGE_PREFIX / LOCAL_AI_IMAGE_TAG) so old installs upgrade
+#   to the new Docker Hub account / version automatically.
 if [[ -f ".env" ]]; then
-  log ".env already exists — keeping your existing settings"
+  log ".env already exists — preserving your secrets"
+  sed_inplace "s|^LOCAL_AI_IMAGE_PREFIX=.*|LOCAL_AI_IMAGE_PREFIX=${RELEASE_PREFIX}|" .env
+  sed_inplace "s|^LOCAL_AI_IMAGE_TAG=.*|LOCAL_AI_IMAGE_TAG=${RELEASE_TAG}|" .env
+  # Sync STABLE_TAG — add it if missing, update if present
+  if [[ -n "$RELEASE_STABLE_TAG" ]]; then
+    if grep -q '^LOCAL_AI_STABLE_TAG=' .env; then
+      sed_inplace "s|^LOCAL_AI_STABLE_TAG=.*|LOCAL_AI_STABLE_TAG=${RELEASE_STABLE_TAG}|" .env
+    else
+      printf '\nLOCAL_AI_STABLE_TAG=%s\n' "$RELEASE_STABLE_TAG" >> .env
+    fi
+  fi
+  log "Synced LOCAL_AI_IMAGE_PREFIX=${RELEASE_PREFIX}, LOCAL_AI_IMAGE_TAG=${RELEASE_TAG}, LOCAL_AI_STABLE_TAG=${RELEASE_STABLE_TAG:-$RELEASE_TAG}"
 else
-  info "Downloading .env template ..."
-  curl -fsSL "$BASE_URL/.env.example" -o .env.example
   cp .env.example .env
 
   # Auto-generate secure secrets
@@ -129,25 +154,11 @@ else
     RAG_KEY=$(openssl rand -hex 24)
     WHISPER_KEY=$(openssl rand -hex 24)
     UPDATER_KEY=$(openssl rand -hex 24)
-    if [[ "$OS" == "Darwin" ]]; then
-      sed -i '' "s/change-me-in-production/$SECRET/" .env
-      sed -i '' "s/dev-rag-key-change-me/$RAG_KEY/" .env
-      sed -i '' "s/WHISPER_API_KEY=change-me-in-production/WHISPER_API_KEY=$WHISPER_KEY/" .env
-      sed -i '' "s/UPDATER_API_KEY=change-me-in-production/UPDATER_API_KEY=$UPDATER_KEY/" .env
-    else
-      sed -i "s/change-me-in-production/$SECRET/" .env
-      sed -i "s/dev-rag-key-change-me/$RAG_KEY/" .env
-      sed -i "s/WHISPER_API_KEY=change-me-in-production/WHISPER_API_KEY=$WHISPER_KEY/" .env
-      sed -i "s/UPDATER_API_KEY=change-me-in-production/UPDATER_API_KEY=$UPDATER_KEY/" .env
-    fi
+    sed_inplace "s/change-me-in-production/$SECRET/" .env
+    sed_inplace "s/dev-rag-key-change-me/$RAG_KEY/" .env
+    sed_inplace "s/WHISPER_API_KEY=change-me-in-production/WHISPER_API_KEY=$WHISPER_KEY/" .env
+    sed_inplace "s/UPDATER_API_KEY=change-me-in-production/UPDATER_API_KEY=$UPDATER_KEY/" .env
     log "Generated secure secret keys"
-  fi
-
-  # Pin the image tag to the version this installer was built for
-  if [[ "$OS" == "Darwin" ]]; then
-    sed -i '' "s/^LOCAL_AI_IMAGE_TAG=.*/LOCAL_AI_IMAGE_TAG=${CURRENT_TAG}/" .env
-  else
-    sed -i "s/^LOCAL_AI_IMAGE_TAG=.*/LOCAL_AI_IMAGE_TAG=${CURRENT_TAG}/" .env
   fi
 
   log ".env created"
@@ -164,6 +175,31 @@ printf "\n"
 info "Starting Local AI ..."
 docker compose -f docker-compose.release.yml up -d
 log "Stack started"
+
+# ── 12.5 Install 'local-ai' helper command ──────────────────────────────────
+printf "\n"
+info "Installing 'local-ai' command ..."
+TMP_CLI=$(mktemp)
+if curl -fsSL "$BASE_URL/local-ai" -o "$TMP_CLI"; then
+  chmod +x "$TMP_CLI"
+  if [[ -w /usr/local/bin ]]; then
+    mv "$TMP_CLI" /usr/local/bin/local-ai
+    log "'local-ai' command installed"
+  else
+    info "Need permission to install to /usr/local/bin (you may be prompted for your password)"
+    if sudo mv "$TMP_CLI" /usr/local/bin/local-ai 2>/dev/null; then
+      log "'local-ai' command installed"
+    else
+      mkdir -p "$INSTALL_DIR/bin"
+      mv "$TMP_CLI" "$INSTALL_DIR/bin/local-ai" 2>/dev/null || true
+      warn "Could not install to /usr/local/bin — placed at $INSTALL_DIR/bin/local-ai"
+      warn "Run with full path or add $INSTALL_DIR/bin to your PATH"
+    fi
+  fi
+else
+  rm -f "$TMP_CLI"
+  warn "Could not download 'local-ai' helper — skipping (use docker compose directly)"
+fi
 
 # ── 13. Wait for the app to be ready ─────────────────────────────────────────
 printf "\n"
@@ -187,7 +223,9 @@ printf "\n${BOLD}${GREEN}  Local AI is ready!${NC}\n\n"
 printf "  Open in your browser:  ${BOLD}http://local-ai.localhost${NC}\n"
 printf "\n"
 printf "  Useful commands:\n"
-printf "    Stop:    docker compose -f $INSTALL_DIR/docker-compose.release.yml down\n"
-printf "    Logs:    docker compose -f $INSTALL_DIR/docker-compose.release.yml logs -f\n"
-printf "    Update:  Open the app -> Settings -> Check for Update\n"
+printf "    Stop:     local-ai stop\n"
+printf "    Start:    local-ai start\n"
+printf "    Logs:     local-ai logs\n"
+printf "    Help:     local-ai help\n"
+printf "    Update:   Open the app -> Settings -> Check for Update\n"
 printf "\n"

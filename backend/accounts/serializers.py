@@ -29,15 +29,19 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
 
 class UserReadSerializer(serializers.ModelSerializer):
     notification_preferences = serializers.SerializerMethodField()
+    has_recovery_code = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "email", "display_name", "is_staff", "date_joined", "notification_preferences"]
+        fields = ["id", "email", "display_name", "is_staff", "date_joined", "notification_preferences", "has_recovery_code"]
         read_only_fields = fields
 
     def get_notification_preferences(self, user):
         prefs, _ = NotificationPreference.objects.get_or_create(user=user)
         return NotificationPreferenceSerializer(prefs).data
+
+    def get_has_recovery_code(self, user) -> bool:
+        return bool(user.recovery_code_hash) and user.recovery_code_used_at is None
 
 
 class UserUpdateSerializer(serializers.ModelSerializer):
@@ -66,3 +70,8 @@ class ChangePasswordSerializer(serializers.Serializer):
 class ResetPasswordSerializer(serializers.Serializer):
     token = serializers.CharField()
     new_password = serializers.CharField(min_length=8, write_only=True)
+
+
+class RecoveryVerifySerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    recovery_code = serializers.CharField()

@@ -10,7 +10,7 @@ from urllib.parse import urljoin, urlparse
 import requests as http_requests
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.http import HttpResponse
+from django.http import HttpResponse, StreamingHttpResponse
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -1037,7 +1037,9 @@ class CheckUpdateView(_UpdaterBase):
 
 
 class ApplyUpdateView(_UpdaterBase):
-    """Trigger an update — pulls latest code and rebuilds containers."""
+    """Trigger an update — proxies the SSE stream from the updater so the
+    frontend can display per-stage progress (pull, write-env, up) in real
+    time, the same way model pulls do."""
 
     permission_classes = [IsAuthenticated]
 
@@ -1048,15 +1050,31 @@ class ApplyUpdateView(_UpdaterBase):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         url = f"{self._UPDATER_URL.rstrip('/')}/update"
-        try:
-            resp = http_requests.post(url, headers=self._headers(), timeout=30)
-            resp.raise_for_status()
-            return Response(resp.json())
-        except Exception as e:
-            return Response(
-                {"error": {"message": f"Update service unavailable: {e}"}},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
+
+        def stream():
+            try:
+                with http_requests.post(
+                    url,
+                    headers=self._headers(),
+                    stream=True,
+                    timeout=(10, None),
+                ) as resp:
+                    resp.raise_for_status()
+                    for chunk in resp.iter_content(chunk_size=None, decode_unicode=False):
+                        if chunk:
+                            yield chunk
+            except Exception as e:
+                payload = json.dumps({
+                    "stage": "error",
+                    "status": f"Update service unavailable: {e}",
+                    "percent": 0,
+                })
+                yield f"data: {payload}\n\n".encode()
+
+        response = StreamingHttpResponse(stream(), content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache, no-transform"
+        response["X-Accel-Buffering"] = "no"
+        return response
 
 
 class ProviderListCreateView(APIView):
@@ -1067,7 +1085,7 @@ class ProviderListCreateView(APIView):
     def get(self, request):
         # Self-heal: re-seed default Ollama provider if missing
         if not Provider.objects.filter(type="ollama").exists():
-            provider = Provider.objects.create(
+            Provider.objects.create(
                 name="Ollama",
                 icon="\U0001F9E0",
                 description="Local model inference with Ollama. Runs on your machine with full privacy.",
@@ -1076,8 +1094,18 @@ class ProviderListCreateView(APIView):
                 is_default=True,
                 is_connected=False,
             )
-            provider.is_connected = self._check_connection(provider)
-            provider.save(update_fields=["is_connected"])
+
+        # Auto-refresh Ollama connection status — bundled Ollama is always
+        # reachable inside the Docker network when running, so the user should
+        # never need to manually click "Connect" (matches Whisper's UX).
+        # Only refreshes Ollama providers; external/custom providers keep their
+        # manually-tested state.
+        for provider in Provider.objects.filter(type="ollama"):
+            current = self._check_connection(provider)
+            if current != provider.is_connected:
+                provider.is_connected = current
+                provider.save(update_fields=["is_connected"])
+
         providers = Provider.objects.all()
         serializer = ProviderSerializer(providers, many=True)
         return Response({"providers": serializer.data})

@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Local AI — friendly CLI wrapper around docker compose.
+# Installed by install.sh to /usr/local/bin/local-ai.
+set -euo pipefail
+
+INSTALL_DIR="${LOCAL_AI_DIR:-$HOME/local-ai}"
+COMPOSE_FILE="$INSTALL_DIR/docker-compose.release.yml"
+
+RED=$'\033[0;31m'; BOLD=$'\033[1m'; NC=$'\033[0m'
+
+if [[ ! -f "$COMPOSE_FILE" ]]; then
+  printf "%sLocal AI is not installed at %s%s\n" "$RED" "$INSTALL_DIR" "$NC" >&2
+  printf "Install it with:\n  curl -fsSL https://get.local-ai.run | bash\n" >&2
+  exit 1
+fi
+
+dc() { docker compose -f "$COMPOSE_FILE" "$@"; }
+
+show_help() {
+  cat <<EOF
+${BOLD}Local AI${NC} — commands:
+
+  local-ai start     Start Local AI
+  local-ai stop      Stop Local AI
+  local-ai restart   Restart Local AI
+  local-ai status    Show running containers
+  local-ai logs      Stream logs (press Ctrl+C to exit)
+  local-ai help      Show this help
+
+Open the app:  http://local-ai.localhost
+To update:     open the app → Settings → Check for Update
+EOF
+}
+
+cmd="${1:-help}"
+case "$cmd" in
+  start)   dc up -d ;;
+  stop)    dc down ;;
+  restart) dc restart ;;
+  status)  dc ps ;;
+  logs)    dc logs -f --tail=100 ;;
+  help|-h|--help) show_help ;;
+  *)
+    printf "%sUnknown command: %s%s\n" "$RED" "$cmd" "$NC" >&2
+    printf "Run: local-ai help\n" >&2
+    exit 1
+    ;;
+esac

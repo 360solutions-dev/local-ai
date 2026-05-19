@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "@/hooks/use-theme";
 import { useAccentColor, type AccentColor } from "@/hooks/use-accent-color";
-import { useCurrentUser, useUpdateProfile, useChangePassword, useUpdateNotificationPreferences } from "@/hooks/use-auth";
+import { useCurrentUser, useUpdateProfile, useChangePassword, useUpdateNotificationPreferences, useRegenerateRecoveryCode } from "@/hooks/use-auth";
+import RecoveryCodeDisplay from "@/components/ui/RecoveryCodeDisplay";
 import { useInstanceInfo, useInstanceSettings, useUpdateInstanceSettings, useExportChatHistory, useExportSettings, useExportAllData, useResetInstance, useDeleteAllData, useFactoryReset } from "@/hooks/use-advanced-settings";
-import { useCheckUpdate, useApplyUpdate, type UpdateInfo } from "@/hooks/use-updates";
+import { useCheckUpdate, streamUpdate, type UpdateInfo, type UpdateEvent } from "@/hooks/use-updates";
 import { useStorageInfo, useDockerUsage, useClearCache, formatBytes } from "@/hooks/use-storage";
 import { SettingsSkeleton } from "@/components/ui/Skeleton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -70,6 +71,19 @@ export default function SettingsClient() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
 
+  // Recovery code
+  const regenerateRecoveryCode = useRegenerateRecoveryCode();
+  const [newRecoveryCode, setNewRecoveryCode] = useState<string | null>(null);
+  const [recoveryError, setRecoveryError] = useState("");
+
+  function handleRegenerateRecoveryCode() {
+    setRecoveryError("");
+    regenerateRecoveryCode.mutate(undefined, {
+      onSuccess: (data) => setNewRecoveryCode(data.recovery_code),
+      onError: (err) => setRecoveryError(err.message),
+    });
+  }
+
   function handleChangePassword() {
     setPasswordError("");
     if (newPassword.length < 8) {
@@ -108,29 +122,29 @@ export default function SettingsClient() {
 
   // Updates — check for new versions and apply
   const checkUpdate = useCheckUpdate();
-  const applyUpdate = useApplyUpdate();
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [showUpdateConfirm, setShowUpdateConfirm] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [targetVersion, setTargetVersion] = useState("");
+  const [updateEvents, setUpdateEvents] = useState<UpdateEvent[]>([]);
+  const [updatePercent, setUpdatePercent] = useState(0);
+  const [updateStage, setUpdateStage] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollStartRef = useRef<number>(0);
 
-  // After triggering an update, poll /api/system/info/ every 5s until the
-  // backend comes back with the new version (services restart in between).
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
 
+  // After the SSE stream ends (updater container restarts mid-stream),
+  // poll /api/system/info/ every 5s until the backend comes back on the
+  // new version. This is the same fallback as before — the stream just
+  // runs alongside it for richer UI feedback.
   function startUpdatePolling(version: string) {
-    setIsUpdating(true);
-    setTargetVersion(version);
     pollStartRef.current = Date.now();
-
     pollRef.current = setInterval(async () => {
-      // Timeout after 5 minutes
       if (Date.now() - pollStartRef.current > 300_000) {
         if (pollRef.current) clearInterval(pollRef.current);
         setIsUpdating(false);
@@ -149,6 +163,31 @@ export default function SettingsClient() {
         // Connection errors expected during restart — keep polling
       }
     }, 5000);
+  }
+
+  async function startUpdate() {
+    if (!updateInfo?.latest_version) return;
+    const version = updateInfo.latest_version;
+    setIsUpdating(true);
+    setTargetVersion(version);
+    setUpdateEvents([]);
+    setUpdatePercent(0);
+    setUpdateStage("starting");
+    try {
+      await streamUpdate((event) => {
+        setUpdateEvents((prev) => [...prev, event].slice(-200));
+        if (event.percent != null) setUpdatePercent(event.percent);
+        setUpdateStage(event.stage);
+      });
+    } catch (err) {
+      // Connection drop during container restart is expected — fall through
+      // to version polling. Real failures surface as a toast.
+      const msg = (err as Error).message || "";
+      if (!msg.includes("network") && !msg.includes("Failed to fetch")) {
+        showToast(t("settings.advanced.updateFailed"));
+      }
+    }
+    startUpdatePolling(version);
   }
 
   // Storage — real data from backend
@@ -514,6 +553,65 @@ export default function SettingsClient() {
               <button type="button" className="px-6 py-2.5 bg-accent text-bg border-none rounded-lg font-body text-[0.92rem] font-semibold cursor-pointer transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed" onClick={handleChangePassword} disabled={changePassword.isPending}>{changePassword.isPending ? t("common.saving") : t("settings.security.updatePassword")}</button>
             </div>
           </section>
+
+          <section>
+            <h2 className="text-lg font-semibold mb-1">{t("recovery.settingsTitle")}</h2>
+            <p className="text-text-muted text-[0.88rem] font-light mb-5 max-w-2xl">{t("recovery.settingsDescription")}</p>
+
+            <div className="max-w-md">
+              {!newRecoveryCode && (
+                <>
+                  <div className="flex items-center gap-2 mb-4 text-[0.88rem]">
+                    <span className="text-text-muted">{t("recovery.status")}</span>
+                    {user?.has_recovery_code ? (
+                      <span className="inline-flex items-center gap-1 font-mono text-[0.75rem] text-accent bg-accent/15 px-2 py-0.5 rounded">
+                        <CheckCircle size={12} />
+                        {t("recovery.statusActive")}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 font-mono text-[0.75rem] text-accent-warm bg-accent-warm/15 px-2 py-0.5 rounded">
+                        {t("recovery.statusMissing")}
+                      </span>
+                    )}
+                  </div>
+
+                  {recoveryError && <p className="text-danger text-[0.82rem] mb-3">{recoveryError}</p>}
+
+                  <button
+                    type="button"
+                    className="px-6 py-2.5 bg-accent text-bg border-none rounded-lg font-body text-[0.92rem] font-semibold cursor-pointer transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={handleRegenerateRecoveryCode}
+                    disabled={regenerateRecoveryCode.isPending}
+                  >
+                    {regenerateRecoveryCode.isPending
+                      ? t("common.saving")
+                      : user?.has_recovery_code
+                        ? t("recovery.regenerateButton")
+                        : t("recovery.generateButton")}
+                  </button>
+
+                  {user?.has_recovery_code && (
+                    <p className="text-text-dim text-[0.78rem] mt-3 leading-relaxed">
+                      {t("recovery.regenerateWarning")}
+                    </p>
+                  )}
+                </>
+              )}
+
+              {newRecoveryCode && (
+                <div>
+                  <RecoveryCodeDisplay code={newRecoveryCode} email={user?.email} className="mb-4" />
+                  <button
+                    type="button"
+                    className="px-6 py-2.5 bg-bg-elevated text-text border border-border rounded-lg font-body text-[0.92rem] font-semibold cursor-pointer transition-all hover:border-accent hover:text-accent"
+                    onClick={() => setNewRecoveryCode(null)}
+                  >
+                    {t("recovery.done")}
+                  </button>
+                </div>
+              )}
+            </div>
+          </section>
         </div>
       )}
 
@@ -596,14 +694,46 @@ export default function SettingsClient() {
                 </div>
               )}
 
-              {/* Updating — spinner and status */}
+              {/* Updating — progress bar, stage, and live event log */}
               {isUpdating && (
                 <div className="mt-4 pt-4 border-t border-border">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 mb-3">
                     <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-                    <span className="text-[0.88rem]">{t("settings.advanced.updatingTo", { version: targetVersion })}</span>
+                    <span className="text-[0.88rem] flex-1">
+                      {t("settings.advanced.updatingTo", { version: targetVersion })}
+                    </span>
+                    <span className="font-mono text-[0.78rem] text-text-muted">{updatePercent}%</span>
                   </div>
-                  <p className="text-[0.82rem] text-text-muted mt-2">{t("settings.advanced.updateInProgress")}</p>
+                  <div className="w-full h-1.5 bg-border rounded-full overflow-hidden mb-3">
+                    <div
+                      className="h-full bg-accent transition-all duration-300"
+                      style={{ width: `${updatePercent}%` }}
+                    />
+                  </div>
+                  <p className="text-[0.82rem] text-text-muted mb-2">
+                    {updateStage === "starting"
+                      ? t("settings.advanced.updateStage.starting")
+                      : updateStage === "pulling"
+                        ? t("settings.advanced.updateStage.pulling")
+                        : updateStage === "writing-env"
+                          ? t("settings.advanced.updateStage.writing-env")
+                          : updateStage === "starting-containers"
+                            ? t("settings.advanced.updateStage.starting-containers")
+                            : updateStage === "complete"
+                              ? t("settings.advanced.updateStage.complete")
+                              : updateStage === "error"
+                                ? t("settings.advanced.updateStage.error")
+                                : t("settings.advanced.updateInProgress")}
+                  </p>
+                  {updateEvents.length > 0 && (
+                    <div className="bg-bg border border-border rounded-lg p-3 max-h-48 overflow-y-auto font-mono text-[0.72rem] text-text-muted space-y-0.5">
+                      {updateEvents.map((event, i) => (
+                        <div key={i} className="truncate">
+                          {event.stage === "log" ? event.status : `▸ ${event.status}`}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -718,14 +848,10 @@ export default function SettingsClient() {
             description={t("settings.advanced.confirmUpdateDesc")}
             confirmLabel={t("settings.advanced.installUpdate")}
             variant="warning"
-            loading={applyUpdate.isPending}
             onCancel={() => setShowUpdateConfirm(false)}
             onConfirm={() => {
               setShowUpdateConfirm(false);
-              applyUpdate.mutate(undefined, {
-                onSuccess: (data) => startUpdatePolling(data.target_version),
-                onError: () => showToast(t("settings.advanced.updateFailed")),
-              });
+              startUpdate();
             }}
           />
         </div>

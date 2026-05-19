@@ -69,9 +69,13 @@ export async function apiDelete<T = Record<string, unknown>>(
 export async function apiUpload<T = Record<string, unknown>>(
   path: string,
   file: File,
+  extraFields?: Record<string, string>,
 ): Promise<ApiResponse<T>> {
   const formData = new FormData();
   formData.append("file", file);
+  if (extraFields) {
+    for (const [k, v] of Object.entries(extraFields)) formData.append(k, v);
+  }
 
   const res = await fetch(path, {
     method: "POST",

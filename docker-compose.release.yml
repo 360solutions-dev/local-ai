@@ -34,8 +34,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-    ports:
-      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -48,13 +46,11 @@ services:
 
   # Bundled Ollama image. Omit by removing container-ollama from COMPOSE_PROFILES to use host Ollama instead.
   ollama:
-    image: ${LOCAL_AI_IMAGE_PREFIX:-alinawaz360}/local-ai-ollama:${LOCAL_AI_IMAGE_TAG:-1.0.1}
+    image: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}/local-ai-ollama:${LOCAL_AI_STABLE_TAG:-${LOCAL_AI_IMAGE_TAG:?missing in .env}}
     container_name: local-ai-ollama
     profiles:
       - container-ollama
     restart: unless-stopped
-    ports:
-      - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
     healthcheck:
@@ -66,7 +62,7 @@ services:
       - local-ai-net
 
   django:
-    image: ${LOCAL_AI_IMAGE_PREFIX:-alinawaz360}/local-ai-django:${LOCAL_AI_IMAGE_TAG:-1.0.1}
+    image: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}/local-ai-django:${LOCAL_AI_IMAGE_TAG:?missing in .env}
     container_name: local-ai-django
     restart: unless-stopped
     user: "0"
@@ -84,6 +80,7 @@ services:
       OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
       UPDATER_SERVICE_URL: http://updater:8070
       UPDATER_API_KEY: ${UPDATER_API_KEY:-defaultkey}
+      APP_VERSION: ${LOCAL_AI_IMAGE_TAG:?missing in .env}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
@@ -100,7 +97,7 @@ services:
       - local-ai-net
 
   nextjs:
-    image: ${LOCAL_AI_IMAGE_PREFIX:-alinawaz360}/local-ai-nextjs:${LOCAL_AI_IMAGE_TAG:-1.0.1}
+    image: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}/local-ai-nextjs:${LOCAL_AI_IMAGE_TAG:?missing in .env}
     container_name: local-ai-nextjs
     restart: unless-stopped
     environment:
@@ -128,7 +125,7 @@ services:
       - local-ai-net
 
   rag:
-    image: ${LOCAL_AI_IMAGE_PREFIX:-alinawaz360}/local-ai-rag:${LOCAL_AI_IMAGE_TAG:-1.0.1}
+    image: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}/local-ai-rag:${LOCAL_AI_IMAGE_TAG:?missing in .env}
     container_name: local-ai-rag
     restart: unless-stopped
     env_file: .env
@@ -136,8 +133,6 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       RAG_API_KEY: ${RAG_API_KEY}
-    ports:
-      - "8501:8501"
     depends_on:
       postgres:
         condition: service_healthy
@@ -152,7 +147,7 @@ services:
       - local-ai-net
 
   whisper:
-    image: ${LOCAL_AI_IMAGE_PREFIX:-alinawaz360}/local-ai-whisper:${LOCAL_AI_IMAGE_TAG:-1.0.1}
+    image: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}/local-ai-whisper:${LOCAL_AI_STABLE_TAG:-${LOCAL_AI_IMAGE_TAG:?missing in .env}}
     container_name: local-ai-whisper
     restart: unless-stopped
     environment:
@@ -170,13 +165,13 @@ services:
       - local-ai-net
 
   updater:
-    image: ${LOCAL_AI_IMAGE_PREFIX:-alinawaz360}/local-ai-updater:${LOCAL_AI_IMAGE_TAG:-1.0.1}
+    image: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}/local-ai-updater:${LOCAL_AI_IMAGE_TAG:?missing in .env}
     container_name: local-ai-updater
     restart: unless-stopped
     environment:
       UPDATER_API_KEY: ${UPDATER_API_KEY:-defaultkey}
-      LOCAL_AI_IMAGE_PREFIX: ${LOCAL_AI_IMAGE_PREFIX:-alinawaz360}
-      CURRENT_VERSION: ${LOCAL_AI_IMAGE_TAG:-1.0.1}
+      LOCAL_AI_IMAGE_PREFIX: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}
+      CURRENT_VERSION: ${LOCAL_AI_IMAGE_TAG:?missing in .env}
     volumes:
       - .:/project
       - /var/run/docker.sock:/var/run/docker.sock

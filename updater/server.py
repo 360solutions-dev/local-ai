@@ -6,7 +6,7 @@ Endpoints
 ---------
 GET  /health  → {"status": "ok"}
 GET  /check   → {"current_version", "latest_version", "update_available", "changelog", "error"}
-POST /update  → {"status": "updating", "target_version"}  (kicks off update.sh in background)
+POST /update  → SSE stream of {"stage", "status", "percent"} events while update.sh runs.
 """
 
 import json
@@ -18,7 +18,9 @@ import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 API_KEY = os.environ.get("UPDATER_API_KEY", "")
-LOCAL_AI_IMAGE_PREFIX = os.environ.get("LOCAL_AI_IMAGE_PREFIX", "alinawaz360")
+LOCAL_AI_IMAGE_PREFIX = os.environ.get("LOCAL_AI_IMAGE_PREFIX", "").strip()
+if not LOCAL_AI_IMAGE_PREFIX:
+    raise RuntimeError("LOCAL_AI_IMAGE_PREFIX env var is required (set in .env)")
 DOCKER_HUB_IMAGE = f"{LOCAL_AI_IMAGE_PREFIX}/local-ai-django"
 CURRENT_VERSION_ENV = os.environ.get("CURRENT_VERSION", "")
 PROJECT_DIR = os.environ.get("PROJECT_DIR", "/project")
@@ -104,6 +106,11 @@ class Handler(BaseHTTPRequestHandler):
             return False
         return True
 
+    def _write_sse(self, payload: dict):
+        line = f"data: {json.dumps(payload)}\n\n".encode()
+        self.wfile.write(line)
+        self.wfile.flush()
+
     def do_GET(self):
         if self.path == "/health":
             self._send_json({"status": "ok"})
@@ -151,32 +158,75 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/update":
             if not self._check_auth():
                 return
-            try:
-                current = _current_version()
-                latest = _latest_docker_hub_version()
-
-                if latest is None or not _compare_versions(current, latest):
-                    self._send_json({
-                        "error": "No update available.",
-                    }, 400)
-                    return
-
-                subprocess.Popen(
-                    ["/app/update.sh", PROJECT_DIR, latest],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True,
-                )
-
-                self._send_json({
-                    "status": "updating",
-                    "target_version": latest,
-                })
-            except Exception as e:
-                self._send_json({"error": str(e)}, 500)
+            self._stream_update()
             return
 
         self._send_json({"error": "Not found"}, 404)
+
+    def _stream_update(self):
+        """Run update.sh as a subprocess and stream its line-delimited
+        progress events back to the client as Server-Sent Events.
+
+        update.sh prints one JSON object per line; we wrap each as an
+        `data: <json>\\n\\n` SSE frame so the frontend can parse with the
+        same pattern used for model pulls.
+        """
+        current = _current_version()
+        latest = _latest_docker_hub_version()
+
+        # SSE response headers — once we send these we own the connection
+        # and can no longer use _send_json for errors.
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache, no-transform")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+        if latest is None or not _compare_versions(current, latest):
+            self._write_sse({
+                "stage": "error",
+                "status": "No update available.",
+                "percent": 0,
+            })
+            return
+
+        proc = subprocess.Popen(
+            ["/app/update.sh", PROJECT_DIR, latest],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+            text=True,
+        )
+
+        try:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                line = line.strip()
+                if not line:
+                    continue
+                # Lines are JSON objects from update.sh emit() / docker output.
+                # If parsing fails, forward as a plain log line.
+                try:
+                    payload = json.loads(line)
+                except json.JSONDecodeError:
+                    payload = {"stage": "log", "status": line, "percent": None}
+                try:
+                    self._write_sse(payload)
+                except (BrokenPipeError, ConnectionResetError):
+                    # Client disconnected — keep the subprocess running so
+                    # the update still completes in the background.
+                    return
+            proc.wait()
+        except Exception as e:
+            try:
+                self._write_sse({
+                    "stage": "error",
+                    "status": str(e),
+                    "percent": 0,
+                })
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 
     def log_message(self, format, *args):
         """Suppress default stderr logging to keep container logs clean."""

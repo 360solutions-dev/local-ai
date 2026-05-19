@@ -9,9 +9,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowRight, Check, Copy, Ellipsis, Mic, Pencil, Trash2 } from "lucide-react";
+import { ArrowRight, Check, Copy, Ellipsis, Loader2, Mic, Pencil, Trash2, Upload } from "lucide-react";
 import Sidebar from "@/components/layout/Sidebar";
 import VoiceInput from "@/components/ui/VoiceInput";
+import Toast from "@/components/ui/Toast";
+import { useKeyboardShortcut } from "@/hooks/use-keyboard-shortcut";
 import { useTranslation } from "@/lib/i18n";
 import {
   useFlatConversations,
@@ -20,6 +22,7 @@ import {
   useCreateConversation,
   useSendMessage,
   useDeleteConversation,
+  useDuplicateConversation,
   useRenameConversation,
   useIndexedFiles,
   useUploadFile,
@@ -126,11 +129,17 @@ export default function ChatClient() {
   const sendMessage = useSendMessage();
   const [copiedMessageId, setCopiedMessageId] = useState<string | number | null>(null);
   const deleteConversation = useDeleteConversation();
+  const duplicateConversation = useDuplicateConversation();
   const renameConversation = useRenameConversation();
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const { data: indexedFiles = [], isLoading: filesLoading } = useIndexedFiles();
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  }, []);
+  const { data: indexedFiles = [], isLoading: filesLoading } = useIndexedFiles(activeChatId);
   const uploadFile = useUploadFile();
   const deleteFile = useDeleteFile();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -158,15 +167,57 @@ export default function ChatClient() {
   // Track that we started an embedding pull so the completion effect knows to finish up
   const embeddingPullPendingRef = useRef<{ model: string; file: File | null } | null>(null);
 
+  /**
+   * Ensure we have an active conversation_id before uploading a file.
+   * If activeChatId is null (e.g., user hit "+ New Chat" but hasn't sent
+   * a message yet), lazily create a conversation and switch to it. The
+   * upload endpoint requires a conversation_id so files are scoped per-chat.
+   */
+  const ensureChatThenUpload = useCallback(
+    async (file: File) => {
+      let cid = activeChatId;
+      if (!cid) {
+        try {
+          const conv = await createConversation.mutateAsync(undefined);
+          cid = conv.id;
+          setActiveChatId(cid);
+        } catch (err) {
+          showToast(err instanceof Error ? err.message : t("chat.uploadFailed"));
+          return;
+        }
+      }
+      uploadFile.mutate(
+        { file, conversationId: cid },
+        {
+          onError: (err) => {
+            showToast(err instanceof Error ? err.message : t("chat.uploadFailed"));
+          },
+        },
+      );
+    },
+    [activeChatId, createConversation, uploadFile, showToast, t],
+  );
+
   const processFileForUpload = useCallback(
     async (file: File) => {
+      if (!file || file.size === 0) {
+        showToast(t("chat.fileEmpty"));
+        return;
+      }
+      const SUPPORTED_EXT = [".pdf", ".docx", ".xlsx", ".csv", ".txt", ".md"];
+      const name = file.name.toLowerCase();
+      const ok = SUPPORTED_EXT.some((ext) => name.endsWith(ext));
+      if (!ok) {
+        showToast(t("chat.fileTypeUnsupported", { ext: name.slice(name.lastIndexOf(".")) || name }));
+        return;
+      }
       const res = await apiGet<EmbeddingModelsStatus>("/api/chat/embedding-models/");
       if (!res.ok || !res.data) {
-        uploadFile.mutate(file);
+        ensureChatThenUpload(file);
         return;
       }
       if (res.data.installed) {
-        uploadFile.mutate(file);
+        ensureChatThenUpload(file);
         return;
       }
       setEmbeddingStatusSnapshot(res.data);
@@ -179,7 +230,7 @@ export default function ChatClient() {
       setPendingPdfFile(file);
       setEmbeddingModalOpen(true);
     },
-    [modelConfig?.embedding_model, uploadFile],
+    [modelConfig?.embedding_model, ensureChatThenUpload, showToast, t],
   );
 
   const embeddingChoices = useMemo(() => {
@@ -231,7 +282,7 @@ export default function ChatClient() {
       setPendingPdfFile(null);
       setEmbeddingStatusSnapshot(null);
       if (file) {
-        uploadFile.mutate(file);
+        ensureChatThenUpload(file);
       }
     } catch (err) {
       setEmbeddingModalError(err instanceof Error ? err.message : "Failed to prepare embedding model.");
@@ -261,7 +312,7 @@ export default function ChatClient() {
           setPendingPdfFile(null);
           setEmbeddingStatusSnapshot(null);
           if (file) {
-            uploadFile.mutate(file);
+            ensureChatThenUpload(file);
           }
         } catch (err) {
           setEmbeddingModalError(err instanceof Error ? err.message : "Failed to save config.");
@@ -270,7 +321,7 @@ export default function ChatClient() {
         }
       })();
     }
-  }, [isPulling, providers, updateModelConfig, uploadFile]);
+  }, [isPulling, providers, updateModelConfig, ensureChatThenUpload]);
 
   // `isSwitchingRef` is set to true just before `setActiveChatId` inside
   // handleSend so the ambient chat-switch cleanup effect doesn't nuke the
@@ -596,6 +647,21 @@ export default function ChatClient() {
     setRenameValue("");
   }
 
+  function handleDuplicateConversation(convId: number) {
+    setMenuOpenId(null);
+    if (duplicateConversation.isPending) return;
+    showToast(t("chat.duplicating"));
+    duplicateConversation.mutate(convId, {
+      onSuccess: (conv) => {
+        setActiveChatId(conv.id);
+        showToast(t("chat.duplicated"));
+      },
+      onError: () => showToast(t("chat.duplicateError")),
+    });
+  }
+
+  useKeyboardShortcut({ key: "o", meta: true, shift: true, handler: handleNewChat });
+
   // Close menu on outside click
   useEffect(() => {
     if (menuOpenId === null) return;
@@ -810,6 +876,7 @@ export default function ChatClient() {
             type="button"
             className="mx-3 mt-3 mb-1 py-2.5 bg-accent/15 border border-dashed border-border-accent rounded-lg text-accent font-body text-[0.88rem] font-medium cursor-pointer transition-all text-center hover:bg-accent/30 hover:border-solid"
             onClick={handleNewChat}
+            title={t("chat.newChatShortcut")}
           >
             {t("chat.newChat")}
           </button>
@@ -872,7 +939,16 @@ export default function ChatClient() {
                             onClick={() => handleStartRename(c.id, c.title)}
                           >
                             <Pencil size={14} />
-                            Rename
+                            {t("chat.rename")}
+                          </button>
+                          <button
+                            type="button"
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-[0.82rem] text-text-muted bg-transparent border-none cursor-pointer transition-colors hover:bg-bg-card hover:text-text text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={() => handleDuplicateConversation(c.id)}
+                            disabled={duplicateConversation.isPending}
+                          >
+                            <Copy size={14} />
+                            {t("chat.duplicate")}
                           </button>
                           <button
                             type="button"
@@ -880,7 +956,7 @@ export default function ChatClient() {
                             onClick={() => handleDeleteConversation(c.id)}
                           >
                             <Trash2 size={14} />
-                            Delete
+                            {t("chat.delete")}
                           </button>
                         </div>
                       )}
@@ -1030,18 +1106,12 @@ export default function ChatClient() {
                 <button type="button" className="w-[34px] h-[34px] rounded-lg border border-border bg-bg-elevated text-text-muted cursor-pointer flex items-center justify-center text-[0.9rem] transition-all hover:border-accent hover:text-accent" title={t("chat.attachFile")} onClick={() => setFilePanelOpen((o) => !o)}>📎</button>
                 <button
                   type="button"
-                  className="w-[34px] h-[34px] rounded-lg border border-border bg-bg-elevated text-text-muted cursor-pointer flex items-center justify-center transition-all hover:border-accent hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={t("chat.voiceInput")}
-                  aria-label={t("chat.voiceInput")}
-                  onClick={() => {
-                    const disabled = typeof window !== "undefined" && localStorage.getItem("whisper_disabled") === "true";
-                    if (disabled || !whisperHealth?.connected || !whisperHealth?.has_model) {
-                      setWhisperAlert(true);
-                    } else {
-                      setVoiceOpen(true);
-                    }
-                  }}
-                  disabled={isSending}
+                  className="w-[34px] h-[34px] rounded-lg border border-border bg-bg-elevated text-text-dim flex items-center justify-center opacity-40 cursor-not-allowed pointer-events-none"
+                  title={t("common.comingSoon")}
+                  aria-label={t("common.comingSoon")}
+                  aria-disabled="true"
+                  disabled
+                  tabIndex={-1}
                 >
                   <Mic size={16} />
                 </button>
@@ -1186,9 +1256,11 @@ export default function ChatClient() {
               }}
               role="presentation"
             >
-              <div className="text-2xl mb-2">{uploadFile.isPending ? "⏳" : "📤"}</div>
-              <div className="text-[0.82rem] text-text-muted font-light">
-                {uploadFile.isPending ? "Uploading & indexing..." : t("chat.dropFiles")}
+              <div className="flex items-center justify-center mb-2 text-accent">
+                {uploadFile.isPending ? <Loader2 size={28} className="animate-spin" /> : <Upload size={28} />}
+              </div>
+              <div className={`text-[0.82rem] font-light ${uploadFile.isPending ? "text-accent" : "text-text-muted"}`}>
+                {uploadFile.isPending ? t("chat.uploadingIndexing") : t("chat.dropFiles")}
               </div>
               <div className="font-mono text-[0.68rem] text-text-dim mt-1">{t("chat.supportedFormats")}</div>
               <input
@@ -1241,7 +1313,12 @@ export default function ChatClient() {
                       <button
                         type="button"
                         className="opacity-0 group-hover:opacity-100 bg-transparent border-none text-text-dim cursor-pointer text-[0.8rem] px-1 py-0.5 rounded transition-all hover:text-danger"
-                        onClick={() => deleteFile.mutate(f.id)}
+                        disabled={!activeChatId}
+                        onClick={() => {
+                          if (activeChatId) {
+                            deleteFile.mutate({ fileId: f.id, conversationId: activeChatId });
+                          }
+                        }}
                       >
                         ✕
                       </button>
@@ -1627,6 +1704,7 @@ export default function ChatClient() {
           </div>
         </div>
       )}
+      <Toast message={toast} />
     </div>
   );
 }

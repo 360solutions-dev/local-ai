@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet } from "@/lib/api";
 
 export interface UpdateInfo {
   current_version: string;
@@ -11,9 +11,10 @@ export interface UpdateInfo {
   error: string | null;
 }
 
-interface ApplyUpdateResponse {
+export interface UpdateEvent {
+  stage: string;
   status: string;
-  target_version: string;
+  percent: number | null;
 }
 
 /**
@@ -36,24 +37,58 @@ export function useCheckUpdate() {
 }
 
 /**
- * Trigger the update — pulls latest code and rebuilds all containers.
- * Returns immediately; the frontend then polls /api/system/info/ until
- * the backend comes back with the new version.
+ * Open the update SSE stream and invoke onEvent for every parsed event.
+ * Resolves once the stream ends (either complete, error, or connection drop
+ * during container restart). Connection drop is expected — the updater
+ * itself restarts as part of `docker compose up -d`.
  */
-export function useApplyUpdate() {
-  return useMutation({
-    mutationFn: async () => {
-      const res = await apiPost<ApplyUpdateResponse>(
-        "/api/system/updates/apply/",
-        { confirm: true },
-      );
-      if (!res.ok) {
-        throw new Error(
-          (res.data as { error?: { message?: string } })?.error?.message ||
-            "Failed to apply update.",
-        );
-      }
-      return res.data;
-    },
+export async function streamUpdate(
+  onEvent: (event: UpdateEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const resp = await fetch("/api/system/updates/apply/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ confirm: true }),
+    signal,
   });
+
+  if (!resp.ok) {
+    let message = `HTTP ${resp.status}`;
+    try {
+      const data = await resp.json();
+      message = data?.error?.message || data?.error || message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  const reader = resp.body?.getReader();
+  if (!reader) throw new Error("No response stream");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const jsonStr = trimmed.startsWith("data: ") ? trimmed.slice(6) : trimmed;
+      try {
+        const data = JSON.parse(jsonStr) as UpdateEvent;
+        onEvent(data);
+      } catch {
+        // Non-JSON line (SSE comment / keep-alive) — skip
+      }
+    }
+  }
 }
