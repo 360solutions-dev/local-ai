@@ -2,12 +2,13 @@
 
 import { FormEvent, useCallback, useState } from "react";
 import { Check, Eye, EyeOff } from "lucide-react";
-import { useLogin, useResetPassword } from "@/hooks/use-auth";
+import { useLogin, useResetPassword, useVerifyRecoveryCode } from "@/hooks/use-auth";
 import { useTranslation } from "@/lib/i18n";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import ErrorAlert from "@/components/ui/ErrorAlert";
 import Logo from "@/components/ui/Logo";
+import RecoveryCodeDisplay from "@/components/ui/RecoveryCodeDisplay";
 
 export default function LoginClient() {
   const { t } = useTranslation();
@@ -19,9 +20,45 @@ export default function LoginClient() {
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotStep, setForgotStep] = useState(1);
   const [resetError, setResetError] = useState("");
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetToken, setResetToken] = useState("");
+  const [newRecoveryCode, setNewRecoveryCode] = useState<string | null>(null);
+  const [newRecoveryAcknowledged, setNewRecoveryAcknowledged] = useState(false);
 
   const login = useLogin();
   const resetPw = useResetPassword();
+  const verifyRecovery = useVerifyRecoveryCode();
+
+  function closeForgot() {
+    setForgotOpen(false);
+    setForgotStep(1);
+    setResetEmail("");
+    setResetToken("");
+    setNewRecoveryCode(null);
+    setNewRecoveryAcknowledged(false);
+    setResetError("");
+  }
+
+  function submitRecoveryCode() {
+    const email = (document.getElementById("forgotEmail") as HTMLInputElement | null)?.value?.trim().toLowerCase() ?? "";
+    const code = (document.getElementById("forgotRecoveryCode") as HTMLInputElement | null)?.value?.trim() ?? "";
+    setResetError("");
+    if (!email || !code) {
+      setResetError(t("recovery.enterEmailAndCode"));
+      return;
+    }
+    verifyRecovery.mutate(
+      { email, recovery_code: code },
+      {
+        onSuccess: (data) => {
+          setResetEmail(email);
+          setResetToken(data.reset_token);
+          setForgotStep(2);
+        },
+        onError: (err) => setResetError(err.message),
+      },
+    );
+  }
 
   const clearError = useCallback(() => {
     setShowError(false);
@@ -51,17 +88,15 @@ export default function LoginClient() {
   }
 
   function submitReset() {
-    const token = (
-      document.getElementById("resetToken") as HTMLInputElement | null
-    )?.value?.trim();
     const newPw = (document.getElementById("newPw") as HTMLInputElement | null)?.value ?? "";
     const confirmPw =
       (document.getElementById("confirmNewPw") as HTMLInputElement | null)?.value ?? "";
 
     setResetError("");
 
-    if (!token) {
-      setResetError(t("login.enterResetTokenAlert"));
+    if (!resetToken) {
+      setResetError(t("recovery.tokenMissing"));
+      setForgotStep(1);
       return;
     }
     if (newPw.length < 8) {
@@ -74,9 +109,14 @@ export default function LoginClient() {
     }
 
     resetPw.mutate(
-      { token, new_password: newPw },
+      { token: resetToken, new_password: newPw },
       {
-        onSuccess: () => setForgotStep(3),
+        onSuccess: (data) => {
+          if (data?.recovery_code) {
+            setNewRecoveryCode(data.recovery_code);
+          }
+          setForgotStep(3);
+        },
         onError: (err) => setResetError(err.message),
       },
     );
@@ -205,81 +245,80 @@ export default function LoginClient() {
             <button
               type="button"
               className="absolute top-4 right-4 bg-transparent border-none text-text-dim text-xl cursor-pointer px-1.5 py-0.5 rounded transition-colors hover:text-text"
-              onClick={() => { setForgotOpen(false); setForgotStep(1); }}
+              onClick={closeForgot}
             >
               ✕
             </button>
 
-            {/* Step 1 */}
+            {/* Step 1: Enter email + recovery code */}
             {forgotStep === 1 && (
               <div>
-                <div className="w-14 h-14 rounded-[14px] bg-accent-warm/10 border border-accent-warm/20 flex items-center justify-center text-2xl mb-5">🔐</div>
-                <div className="text-xl font-bold mb-1.5">{t("login.resetPassword")}</div>
+                <div className="w-14 h-14 rounded-[14px] bg-accent-warm/10 border border-accent-warm/20 flex items-center justify-center mb-5 text-accent-warm">
+                  <Check size={26} />
+                </div>
+                <div className="text-xl font-bold mb-1.5">{t("recovery.resetTitle")}</div>
                 <div className="text-text-muted text-[0.9rem] font-light leading-relaxed mb-6">
-                  {t("login.resetOfflineNote")}
+                  {t("recovery.resetSubtitle")}
                 </div>
 
-                <div className="bg-bg border border-border rounded-[10px] overflow-hidden mb-5">
-                  <div className="flex items-center justify-between px-3 py-2 bg-bg-card border-b border-border">
-                    <span className="font-mono text-[0.7rem] text-text-dim">{t("login.runOnServer")}</span>
-                    <button
-                      type="button"
-                      className="bg-transparent border-none text-text-dim font-mono text-[0.7rem] cursor-pointer px-1.5 py-0.5 rounded transition-colors hover:text-accent"
-                      onClick={(e) => copyCmd(e.currentTarget, "docker exec local-ai-api python manage.py reset-password")}
-                    >
-                      {t("common.copy")}
-                    </button>
-                  </div>
-                  <div className="px-4 py-3 font-mono text-[0.82rem] leading-[1.7]">
-                    <span className="text-accent">$</span> docker exec local-ai-api python manage.py reset-password
-                    <br /><br />
-                    <span className="text-text-muted">{t("login.enterAdminEmail")}</span>
-                    <span className="text-accent-warm">admin@company.com</span>
-                    <br />
-                    <span className="text-text-muted">{t("login.resetTokenGenerated")}</span>
-                    <br />
-                    <span className="text-accent-warm">RX7K-4M2N-9PWT</span>
-                    <br />
-                    <span className="text-text-muted">{t("login.tokenExpires")}</span>
-                  </div>
+                {resetError && <ErrorAlert message={resetError} className="mb-5" />}
+
+                <div className="mb-4">
+                  <label className="block font-mono text-[0.72rem] text-text-muted tracking-wide uppercase mb-1.5">{t("recovery.email")}</label>
+                  <input
+                    className={inputBase}
+                    type="email"
+                    id="forgotEmail"
+                    placeholder={t("login.emailPlaceholder")}
+                    defaultValue={resetEmail}
+                    autoComplete="email"
+                  />
                 </div>
 
-                <div className="flex gap-2.5 p-3 bg-accent-warm/[0.06] border border-accent-warm/15 rounded-lg text-[0.82rem] text-text-muted leading-relaxed mb-5">
-                  <span className="shrink-0">💡</span>
-                  <span>{t("login.terminalAccessNote")}</span>
+                <div className="mb-5">
+                  <label className="block font-mono text-[0.72rem] text-text-muted tracking-wide uppercase mb-1.5">{t("recovery.codeLabel")}</label>
+                  <input
+                    className="w-full px-4 py-2.5 bg-bg-card border border-border rounded-lg text-text font-mono text-[0.9rem] tracking-[0.15em] text-center outline-none transition-colors focus:border-border-focus placeholder:tracking-[0.05em] placeholder:text-text-dim uppercase"
+                    type="text"
+                    id="forgotRecoveryCode"
+                    placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
+                    autoComplete="off"
+                  />
                 </div>
 
-                <button type="button" className="flex items-center justify-center gap-2 w-full py-3 bg-accent text-bg border-none rounded-lg font-body text-[0.92rem] font-semibold cursor-pointer transition-all shadow-[0_0_20px_rgba(52,211,153,0.15)] hover:-translate-y-0.5" onClick={() => setForgotStep(2)}>
-                  {t("login.haveResetToken")}
+                <button
+                  type="button"
+                  className="flex items-center justify-center gap-2 w-full py-3 bg-accent text-bg border-none rounded-lg font-body text-[0.92rem] font-semibold cursor-pointer transition-all shadow-[0_0_20px_rgba(52,211,153,0.15)] hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+                  onClick={submitRecoveryCode}
+                  disabled={verifyRecovery.isPending}
+                >
+                  {verifyRecovery.isPending ? t("recovery.verifying") : t("recovery.continue")}
                 </button>
-                <button type="button" className="flex items-center justify-center w-full py-2.5 bg-transparent text-text-muted border border-border rounded-lg font-body text-[0.88rem] cursor-pointer transition-all mt-2 hover:border-text-muted hover:text-text" onClick={() => { setForgotOpen(false); setForgotStep(1); }}>
+
+                <div className="mt-5 p-3 bg-bg border border-border rounded-lg text-[0.78rem] text-text-dim leading-relaxed">
+                  <div className="font-semibold text-text-muted mb-1">{t("recovery.lostCodeTitle")}</div>
+                  {t("recovery.lostCodeBody")}
+                  <div className="mt-2 font-mono text-[0.75rem] text-accent select-all">docker compose exec django python manage.py reset_password</div>
+                </div>
+
+                <button type="button" className="flex items-center justify-center w-full py-2.5 bg-transparent text-text-muted border border-border rounded-lg font-body text-[0.88rem] cursor-pointer transition-all mt-3 hover:border-text-muted hover:text-text" onClick={closeForgot}>
                   {t("login.backToSignIn")}
                 </button>
               </div>
             )}
 
-            {/* Step 2 */}
+            {/* Step 2: Set new password */}
             {forgotStep === 2 && (
               <div>
-                <div className="w-14 h-14 rounded-[14px] bg-accent-warm/10 border border-accent-warm/20 flex items-center justify-center text-2xl mb-5">🔑</div>
-                <div className="text-xl font-bold mb-1.5">{t("login.enterResetToken")}</div>
+                <div className="w-14 h-14 rounded-[14px] bg-accent-warm/10 border border-accent-warm/20 flex items-center justify-center mb-5 text-accent-warm">
+                  <Eye size={26} />
+                </div>
+                <div className="text-xl font-bold mb-1.5">{t("recovery.setNewPasswordTitle")}</div>
                 <div className="text-text-muted text-[0.9rem] font-light leading-relaxed mb-6">
-                  {t("login.pasteToken")}
+                  {t("recovery.setNewPasswordSubtitle")}
                 </div>
 
                 {resetError && <ErrorAlert message={resetError} className="mb-5" />}
-
-                <div className="mb-5">
-                  <label className="block font-mono text-[0.72rem] text-text-muted tracking-wide uppercase mb-1.5">{t("login.resetToken")}</label>
-                  <input
-                    className="w-full px-4 py-2.5 bg-bg-card border border-border rounded-lg text-text font-mono text-[0.9rem] tracking-[0.15em] text-center outline-none transition-colors focus:border-border-focus placeholder:tracking-[0.05em] placeholder:text-text-dim"
-                    type="text"
-                    id="resetToken"
-                    placeholder="XXXX-XXXX-XXXX"
-                    maxLength={14}
-                    autoComplete="off"
-                  />
-                </div>
 
                 <div className="mb-4 space-y-4">
                   <div>
@@ -292,24 +331,56 @@ export default function LoginClient() {
                   </div>
                 </div>
 
-                <button type="button" className="flex items-center justify-center gap-2 w-full py-3 bg-accent text-bg border-none rounded-lg font-body text-[0.92rem] font-semibold cursor-pointer transition-all shadow-[0_0_20px_rgba(52,211,153,0.15)] hover:-translate-y-0.5" onClick={submitReset}>
-                  {t("login.resetPasswordBtn")}
+                <button
+                  type="button"
+                  className="flex items-center justify-center gap-2 w-full py-3 bg-accent text-bg border-none rounded-lg font-body text-[0.92rem] font-semibold cursor-pointer transition-all shadow-[0_0_20px_rgba(52,211,153,0.15)] hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+                  onClick={submitReset}
+                  disabled={resetPw.isPending}
+                >
+                  {resetPw.isPending ? t("recovery.resetting") : t("login.resetPasswordBtn")}
                 </button>
                 <button type="button" className="flex items-center justify-center w-full py-2.5 bg-transparent text-text-muted border border-border rounded-lg font-body text-[0.88rem] cursor-pointer transition-all mt-2 hover:border-text-muted hover:text-text" onClick={() => setForgotStep(1)}>
-                  ← Back
+                  ← {t("recovery.back")}
                 </button>
               </div>
             )}
 
-            {/* Step 3 */}
+            {/* Step 3: Save the NEW recovery code */}
             {forgotStep === 3 && (
-              <div className="text-center">
-                <div className="w-16 h-16 rounded-full bg-accent/15 border-2 border-accent flex items-center justify-center text-3xl mx-auto mb-4 animate-[scaleIn_0.5s_cubic-bezier(0.34,1.56,0.64,1)]">✓</div>
-                <div className="text-xl font-bold mb-1.5">{t("login.passwordReset")}</div>
-                <div className="text-text-muted text-[0.9rem] font-light leading-relaxed mb-6">
-                  {t("login.passwordResetSuccess")}
+              <div>
+                <div className="text-center mb-5">
+                  <div className="w-14 h-14 rounded-full bg-accent/15 border-2 border-accent flex items-center justify-center mx-auto mb-3 text-accent animate-[scaleIn_0.5s_cubic-bezier(0.34,1.56,0.64,1)]">
+                    <Check size={26} strokeWidth={3} />
+                  </div>
+                  <div className="text-xl font-bold mb-1.5">{t("login.passwordReset")}</div>
+                  <div className="text-text-muted text-[0.9rem] font-light leading-relaxed">
+                    {t("recovery.passwordResetWithNewCode")}
+                  </div>
                 </div>
-                <button type="button" className="flex items-center justify-center gap-2 w-full py-3 bg-accent text-bg border-none rounded-lg font-body text-[0.92rem] font-semibold cursor-pointer transition-all shadow-[0_0_20px_rgba(52,211,153,0.15)] hover:-translate-y-0.5" onClick={() => { setForgotOpen(false); setForgotStep(1); }}>
+
+                {newRecoveryCode && (
+                  <>
+                    <RecoveryCodeDisplay code={newRecoveryCode} email={resetEmail} className="mb-4" />
+                    <label className="flex items-start gap-3 mb-5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={newRecoveryAcknowledged}
+                        onChange={(e) => setNewRecoveryAcknowledged(e.target.checked)}
+                        className="mt-1 w-4 h-4 accent-[var(--color-accent)] cursor-pointer"
+                      />
+                      <span className="text-[0.88rem] text-text-muted leading-relaxed">
+                        {t("recovery.acknowledgeSaved")}
+                      </span>
+                    </label>
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  className="flex items-center justify-center gap-2 w-full py-3 bg-accent text-bg border-none rounded-lg font-body text-[0.92rem] font-semibold cursor-pointer transition-all shadow-[0_0_20px_rgba(52,211,153,0.15)] hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+                  onClick={closeForgot}
+                  disabled={!!newRecoveryCode && !newRecoveryAcknowledged}
+                >
                   {t("login.backToSignInBtn")}
                 </button>
               </div>

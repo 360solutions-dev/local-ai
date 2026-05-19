@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "@/hooks/use-theme";
 import { useAccentColor, type AccentColor } from "@/hooks/use-accent-color";
-import { useCurrentUser, useUpdateProfile, useChangePassword, useUpdateNotificationPreferences } from "@/hooks/use-auth";
+import { useCurrentUser, useUpdateProfile, useChangePassword, useUpdateNotificationPreferences, useRegenerateRecoveryCode } from "@/hooks/use-auth";
+import RecoveryCodeDisplay from "@/components/ui/RecoveryCodeDisplay";
 import { useInstanceInfo, useInstanceSettings, useUpdateInstanceSettings, useExportChatHistory, useExportSettings, useExportAllData, useResetInstance, useDeleteAllData, useFactoryReset } from "@/hooks/use-advanced-settings";
 import { useCheckUpdate, streamUpdate, type UpdateInfo, type UpdateEvent } from "@/hooks/use-updates";
 import { useStorageInfo, useDockerUsage, useClearCache, formatBytes } from "@/hooks/use-storage";
@@ -69,6 +70,19 @@ export default function SettingsClient() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
+
+  // Recovery code
+  const regenerateRecoveryCode = useRegenerateRecoveryCode();
+  const [newRecoveryCode, setNewRecoveryCode] = useState<string | null>(null);
+  const [recoveryError, setRecoveryError] = useState("");
+
+  function handleRegenerateRecoveryCode() {
+    setRecoveryError("");
+    regenerateRecoveryCode.mutate(undefined, {
+      onSuccess: (data) => setNewRecoveryCode(data.recovery_code),
+      onError: (err) => setRecoveryError(err.message),
+    });
+  }
 
   function handleChangePassword() {
     setPasswordError("");
@@ -537,6 +551,65 @@ export default function SettingsClient() {
               </div>
               {passwordError && <p className="text-danger text-[0.82rem]">{passwordError}</p>}
               <button type="button" className="px-6 py-2.5 bg-accent text-bg border-none rounded-lg font-body text-[0.92rem] font-semibold cursor-pointer transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed" onClick={handleChangePassword} disabled={changePassword.isPending}>{changePassword.isPending ? t("common.saving") : t("settings.security.updatePassword")}</button>
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold mb-1">{t("recovery.settingsTitle")}</h2>
+            <p className="text-text-muted text-[0.88rem] font-light mb-5 max-w-2xl">{t("recovery.settingsDescription")}</p>
+
+            <div className="max-w-md">
+              {!newRecoveryCode && (
+                <>
+                  <div className="flex items-center gap-2 mb-4 text-[0.88rem]">
+                    <span className="text-text-muted">{t("recovery.status")}</span>
+                    {user?.has_recovery_code ? (
+                      <span className="inline-flex items-center gap-1 font-mono text-[0.75rem] text-accent bg-accent/15 px-2 py-0.5 rounded">
+                        <CheckCircle size={12} />
+                        {t("recovery.statusActive")}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 font-mono text-[0.75rem] text-accent-warm bg-accent-warm/15 px-2 py-0.5 rounded">
+                        {t("recovery.statusMissing")}
+                      </span>
+                    )}
+                  </div>
+
+                  {recoveryError && <p className="text-danger text-[0.82rem] mb-3">{recoveryError}</p>}
+
+                  <button
+                    type="button"
+                    className="px-6 py-2.5 bg-accent text-bg border-none rounded-lg font-body text-[0.92rem] font-semibold cursor-pointer transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={handleRegenerateRecoveryCode}
+                    disabled={regenerateRecoveryCode.isPending}
+                  >
+                    {regenerateRecoveryCode.isPending
+                      ? t("common.saving")
+                      : user?.has_recovery_code
+                        ? t("recovery.regenerateButton")
+                        : t("recovery.generateButton")}
+                  </button>
+
+                  {user?.has_recovery_code && (
+                    <p className="text-text-dim text-[0.78rem] mt-3 leading-relaxed">
+                      {t("recovery.regenerateWarning")}
+                    </p>
+                  )}
+                </>
+              )}
+
+              {newRecoveryCode && (
+                <div>
+                  <RecoveryCodeDisplay code={newRecoveryCode} email={user?.email} className="mb-4" />
+                  <button
+                    type="button"
+                    className="px-6 py-2.5 bg-bg-elevated text-text border border-border rounded-lg font-body text-[0.92rem] font-semibold cursor-pointer transition-all hover:border-accent hover:text-accent"
+                    onClick={() => setNewRecoveryCode(null)}
+                  >
+                    {t("recovery.done")}
+                  </button>
+                </div>
+              )}
             </div>
           </section>
         </div>

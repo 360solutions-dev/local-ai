@@ -17,6 +17,7 @@ interface UserInfo {
   is_staff: boolean;
   date_joined: string;
   notification_preferences: NotificationPreferences;
+  has_recovery_code: boolean;
 }
 
 // Query: fetch current user (shared across SidebarUser + Settings)
@@ -80,7 +81,7 @@ export function useRegister() {
 
   return useMutation({
     mutationFn: async (data: { display_name: string; email: string; password: string }) => {
-      const res = await apiPost<{ user: UserInfo; error?: { message?: string; details?: Record<string, string[]> } }>(
+      const res = await apiPost<{ user: UserInfo; recovery_code?: string; error?: { message?: string; details?: Record<string, string[]> } }>(
         "/api/auth/register/",
         data,
       );
@@ -189,11 +190,12 @@ export function useChangePassword() {
   });
 }
 
-// Mutation: reset password
+// Mutation: reset password (step 2 — token + new password → returns next recovery_code)
 export function useResetPassword() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: { token: string; new_password: string }) => {
-      const res = await apiPost<{ error?: { message?: string } }>(
+      const res = await apiPost<{ message?: string; recovery_code?: string; error?: { message?: string } }>(
         "/api/auth/reset-password/",
         data,
       );
@@ -204,6 +206,51 @@ export function useResetPassword() {
         );
       }
       return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+    },
+  });
+}
+
+// Mutation: verify recovery code (step 1 — email + code → short-lived reset token)
+export function useVerifyRecoveryCode() {
+  return useMutation({
+    mutationFn: async (data: { email: string; recovery_code: string }) => {
+      const res = await apiPost<{ reset_token?: string; error?: { message?: string } }>(
+        "/api/auth/recovery/verify/",
+        data,
+      );
+      if (!res.ok || !res.data?.reset_token) {
+        throw new Error(
+          (res.data as { error?: { message?: string } })?.error?.message ||
+            "Invalid email or recovery code.",
+        );
+      }
+      return res.data as { reset_token: string };
+    },
+  });
+}
+
+// Mutation: regenerate recovery code (authenticated — from Settings → Security)
+export function useRegenerateRecoveryCode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiPost<{ recovery_code?: string; error?: { message?: string } }>(
+        "/api/auth/recovery/regenerate/",
+        {},
+      );
+      if (!res.ok || !res.data?.recovery_code) {
+        throw new Error(
+          (res.data as { error?: { message?: string } })?.error?.message ||
+            "Failed to regenerate recovery code.",
+        );
+      }
+      return res.data as { recovery_code: string };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
     },
   });
 }

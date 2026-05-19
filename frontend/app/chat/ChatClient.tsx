@@ -1092,18 +1092,12 @@ export default function ChatClient() {
                 <button type="button" className="w-[34px] h-[34px] rounded-lg border border-border bg-bg-elevated text-text-muted cursor-pointer flex items-center justify-center text-[0.9rem] transition-all hover:border-accent hover:text-accent" title={t("chat.attachFile")} onClick={() => setFilePanelOpen((o) => !o)}>📎</button>
                 <button
                   type="button"
-                  className="w-[34px] h-[34px] rounded-lg border border-border bg-bg-elevated text-text-muted cursor-pointer flex items-center justify-center transition-all hover:border-accent hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={t("chat.voiceInput")}
-                  aria-label={t("chat.voiceInput")}
-                  onClick={() => {
-                    const disabled = typeof window !== "undefined" && localStorage.getItem("whisper_disabled") === "true";
-                    if (disabled || !whisperHealth?.connected || !whisperHealth?.has_model) {
-                      setWhisperAlert(true);
-                    } else {
-                      setVoiceOpen(true);
-                    }
-                  }}
-                  disabled={isSending}
+                  className="w-[34px] h-[34px] rounded-lg border border-border bg-bg-elevated text-text-dim flex items-center justify-center opacity-40 cursor-not-allowed pointer-events-none"
+                  title={t("common.comingSoon")}
+                  aria-label={t("common.comingSoon")}
+                  aria-disabled="true"
+                  disabled
+                  tabIndex={-1}
                 >
                   <Mic size={16} />
                 </button>

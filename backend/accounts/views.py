@@ -10,10 +10,19 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from core.exceptions import SetupAlreadyComplete
 from system.models import Provider
 
+from django.utils import timezone as dj_timezone
+
 from .models import User
+from .recovery import (
+    assign_new_recovery_code,
+    decode_reset_token,
+    issue_reset_token,
+    verify_recovery_code,
+)
 from .serializers import (
     ChangePasswordSerializer,
     LoginSerializer,
+    RecoveryVerifySerializer,
     RegisterSerializer,
     ResetPasswordSerializer,
     UserReadSerializer,
@@ -113,10 +122,13 @@ class RegisterView(APIView):
                 ollama_provider.is_connected = False
                 ollama_provider.save(update_fields=["is_connected"])
 
+        recovery_code = assign_new_recovery_code(user)
+
         response = Response(
             {
                 "message": "Admin account created successfully.",
                 "user": UserReadSerializer(user).data,
+                "recovery_code": recovery_code,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -215,17 +227,86 @@ class ChangePasswordView(APIView):
         return _set_auth_cookies(response, user)
 
 
+class RecoveryVerifyView(APIView):
+    """Step 1 of the forgot-password flow: trade a recovery code for a short-lived reset token."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = RecoveryVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"].lower()
+        code = serializer.validated_data["recovery_code"]
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response(
+                {"error": {"code": "INVALID_RECOVERY", "message": "Invalid email or recovery code."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not user.recovery_code_hash or user.recovery_code_used_at is not None:
+            return Response(
+                {"error": {"code": "INVALID_RECOVERY", "message": "Invalid email or recovery code."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not verify_recovery_code(code, user.recovery_code_hash):
+            return Response(
+                {"error": {"code": "INVALID_RECOVERY", "message": "Invalid email or recovery code."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        token = issue_reset_token(user)
+        return Response({"reset_token": token})
+
+
 class ResetPasswordView(APIView):
+    """Step 2 of the forgot-password flow: set a new password using the short-lived reset token."""
+
     permission_classes = [AllowAny]
 
     def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        # TODO: Validate token from PasswordResetToken model
-        # For now, this is a placeholder that will be completed
-        # when the reset_password management command is implemented
-        return Response(
-            {"error": {"code": "NOT_FOUND", "message": "Invalid or expired reset token."}},
-            status=status.HTTP_400_BAD_REQUEST,
+        user_id = decode_reset_token(serializer.validated_data["token"])
+        if user_id is None:
+            return Response(
+                {"error": {"code": "INVALID_TOKEN", "message": "Invalid or expired reset token. Start over from the Forgot Password screen."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {"error": {"code": "INVALID_TOKEN", "message": "Invalid or expired reset token."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(serializer.validated_data["new_password"])
+        user.recovery_code_used_at = dj_timezone.now()
+        user.save(update_fields=["password", "recovery_code_used_at"])
+
+        new_code = assign_new_recovery_code(user)
+
+        response = Response(
+            {
+                "message": "Password updated successfully.",
+                "recovery_code": new_code,
+            }
         )
+        return _set_auth_cookies(response, user)
+
+
+class RegenerateRecoveryCodeView(APIView):
+    """Authenticated: rotate the recovery code from Settings → Security."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        new_code = assign_new_recovery_code(request.user)
+        return Response({"recovery_code": new_code})

@@ -9,6 +9,7 @@ import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import ErrorAlert from "@/components/ui/ErrorAlert";
 import InfoCard from "@/components/ui/InfoCard";
+import RecoveryCodeDisplay from "@/components/ui/RecoveryCodeDisplay";
 
 interface CheckItem {
   key: string;
@@ -22,6 +23,9 @@ export default function OnboardingClient() {
   const [step, setStep] = useState(1);
   const [pwVisible, setPwVisible] = useState(false);
   const [error, setError] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
+  const [recoveryEmail, setRecoveryEmail] = useState<string | null>(null);
+  const [recoveryAcknowledged, setRecoveryAcknowledged] = useState(false);
 
   const register = useRegister();
   const { data: health, isLoading: healthLoading } = useSystemHealth();
@@ -31,7 +35,7 @@ export default function OnboardingClient() {
   const [checksRunning, setChecksRunning] = useState(false);
 
   useEffect(() => {
-    if (step !== 3 || checksRunning) return;
+    if (step !== 4 || checksRunning) return;
     setChecksRunning(true);
 
     const items: CheckItem[] = [
@@ -102,7 +106,15 @@ export default function OnboardingClient() {
     register.mutate(
       { display_name: displayName, email, password },
       {
-        onSuccess: () => setStep(3),
+        onSuccess: (data) => {
+          if (data?.recovery_code) {
+            setRecoveryCode(data.recovery_code);
+            setRecoveryEmail(email);
+            setStep(3);
+          } else {
+            setStep(4);
+          }
+        },
         onError: (err) => setError(err.message),
       },
     );
@@ -132,6 +144,7 @@ export default function OnboardingClient() {
           <div className={`h-[3px] rounded-full transition-all duration-300 ${step >= 1 ? "bg-accent w-12" : "bg-border w-8"}`} />
           <div className={`h-[3px] rounded-full transition-all duration-300 ${step >= 2 ? "bg-accent w-12" : "bg-border w-8"}`} />
           <div className={`h-[3px] rounded-full transition-all duration-300 ${step >= 3 ? "bg-accent w-12" : "bg-border w-8"}`} />
+          <div className={`h-[3px] rounded-full transition-all duration-300 ${step >= 4 ? "bg-accent w-12" : "bg-border w-8"}`} />
         </div>
 
         {/* Step 1: Welcome */}
@@ -218,8 +231,40 @@ export default function OnboardingClient() {
           </div>
         )}
 
-        {/* Step 3: Success — dynamic health checks */}
-        {step === 3 && (
+        {/* Step 3: Save Recovery Code (mandatory) */}
+        {step === 3 && recoveryCode && (
+          <div className="animate-[cardIn_0.4s_ease]">
+            <h1 className="text-[1.8rem] font-bold tracking-tight mb-2.5 leading-tight">{t("recovery.onboardingTitle")}</h1>
+            <p className="text-text-muted text-[0.95rem] font-light leading-relaxed mb-6">
+              {t("recovery.onboardingSubtitle")}
+            </p>
+
+            <RecoveryCodeDisplay code={recoveryCode} email={recoveryEmail ?? undefined} className="mb-5" />
+
+            <label className="flex items-start gap-3 mb-6 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={recoveryAcknowledged}
+                onChange={(e) => setRecoveryAcknowledged(e.target.checked)}
+                className="mt-1 w-4 h-4 accent-[var(--color-accent)] cursor-pointer"
+              />
+              <span className="text-[0.9rem] text-text-muted leading-relaxed">
+                {t("recovery.acknowledgeSaved")}
+              </span>
+            </label>
+
+            <Button
+              className={btnFullWidth}
+              disabled={!recoveryAcknowledged}
+              onClick={() => setStep(4)}
+            >
+              {t("recovery.continue")}
+            </Button>
+          </div>
+        )}
+
+        {/* Step 4: Success — dynamic health checks */}
+        {step === 4 && (
           <div className="animate-[cardIn_0.4s_ease]">
             <div className="w-[72px] h-[72px] rounded-full bg-accent/15 border-2 border-accent flex items-center justify-center text-3xl mb-6 animate-[scaleIn_0.5s_cubic-bezier(0.34,1.56,0.64,1)]">✓</div>
             <h1 className="text-[1.8rem] font-bold tracking-tight mb-2.5 leading-tight">{t("onboarding.allSet")}</h1>

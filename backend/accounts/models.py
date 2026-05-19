@@ -6,6 +6,10 @@ class User(AbstractUser):
     display_name = models.CharField(max_length=150, blank=True)
     email = models.EmailField(unique=True)
 
+    recovery_code_hash = models.CharField(max_length=128, blank=True, null=True)
+    recovery_code_created_at = models.DateTimeField(blank=True, null=True)
+    recovery_code_used_at = models.DateTimeField(blank=True, null=True)
+
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["username", "display_name"]
 
