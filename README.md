@@ -88,16 +88,62 @@ echo "127.0.0.1 local-ai.localhost api.local-ai.localhost" | sudo tee -a /etc/ho
 open http://local-ai.localhost
 ```
 
-## Build From Source
+## Clone & Run From Source
 
-For development or to customize images:
+Building from a clone (for development or to customize images) needs a couple of
+extra choices the one-liner makes for you — mainly **where Ollama runs** (your
+machine vs. a bundled container) and the `.env` secrets. The `setup.sh` /
+`setup.ps1` script handles all of that interactively.
+
+> [!IMPORTANT]
+> **macOS:** clone into your **home directory**, not `~/Documents`, `~/Desktop`,
+> or `~/Downloads`. macOS privacy (TCC) blocks Docker Desktop from bind-mounting
+> folders under those paths, which fails with
+> `mkdir /host_mnt/...: operation not permitted`. Either move the project out of
+> those folders, or grant Docker Desktop **Full Disk Access** in
+> *System Settings → Privacy & Security* and add the path under
+> *Docker Desktop → Settings → Resources → File Sharing*.
+
+### Quick clone + setup (recommended)
 
 ```bash
 git clone https://github.com/360solutions-dev/local-ai.git
 cd local-ai
-cp .env.example .env
+```
+
+| Platform | Setup | Uninstall |
+|---|---|---|
+| macOS (Intel & Apple Silicon / M1) | `./setup.sh` | `./uninstall.sh` |
+| Ubuntu / Linux | `./setup.sh` | `./uninstall.sh` |
+| Windows | `powershell -ExecutionPolicy Bypass -File .\setup.ps1` | `powershell -ExecutionPolicy Bypass -File .\uninstall.ps1` |
+
+The setup script:
+
+1. Verifies Docker / Compose, then creates `.env` from `.env.example` and
+   auto-generates the secrets (`DJANGO_SECRET_KEY`, `RAG_API_KEY`, etc.).
+2. **Asks where Ollama should run — Machine or Docker:**
+   - **Machine** — installs host Ollama if missing (Homebrew on macOS,
+     official installer on Linux, winget/installer on Windows), starts it, and
+     pulls `llama3.1:8b` + `nomic-embed-text`.
+   - **Docker** — uses the bundled `container-ollama` profile, nothing to install.
+3. Writes the matching `OLLAMA_HOST` / `COMPOSE_PROFILES` into `.env` and runs
+   `docker compose up -d`.
+
+**Uninstall flags** — `--remove-ollama` (also remove host Ollama + `~/.ollama`
+models), `--keep-volumes` (keep your data), `--remove-env`, `--yes`. On Windows:
+`-RemoveOllama`, `-KeepVolumes`, `-RemoveEnv`, `-Yes`.
+
+### Manual clone (do it yourself)
+
+```bash
+git clone https://github.com/360solutions-dev/local-ai.git
+cd local-ai
+cp .env.example .env       # then edit secrets + pick your Ollama target
 docker compose up --build -d
 ```
+
+See [Manual install (Docker Compose) →](https://docs.local-ai.run/getting-started#manual-install)
+for the full step-by-step (env, migrations, model pull, hosts entry).
 
 ## Configuration
 
