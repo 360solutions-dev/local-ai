@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<base target="_parent">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>local-ai.run — Text to Audio</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #0a0a0f; --bg-elevated: #111118; --bg-card: #16161f; --bg-card-hover: #1c1c28;
+  --border: #23233a; --border-accent: #2d4a3e; --border-focus: #34d399;
+  --text: #e8e8ef; --text-muted: #7a7a8f; --text-dim: #50506a;
+  --accent: #34d399; --accent-glow: rgba(52, 211, 153, 0.15); --accent-glow-strong: rgba(52, 211, 153, 0.3);
+  --accent-secondary: #22d3ee; --accent-warm: #f59e0b; --danger: #ef4444;
+  --violet: #8b5cf6; --violet-glow: rgba(139, 92, 246, 0.15);
+  --font-body: 'Outfit', sans-serif; --font-mono: 'JetBrains Mono', monospace;
+}
+body { font-family: var(--font-body); background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
+body::before { content:''; position:fixed; inset:0; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E"); pointer-events:none; z-index:9999; }
+
+.app-layout { display: flex; height: 100vh; }
+
+/* ── Sidebar ── */
+.sidebar { width:260px; background:var(--bg-elevated); border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; }
+.sidebar-logo { display:flex; align-items:center; gap:0.5rem; padding:1rem 1.2rem; font-family:var(--font-mono); font-size:1rem; color:var(--accent); text-decoration:none; border-bottom:1px solid var(--border); }
+.sidebar-logo svg { width:22px; height:22px; }
+.logo-dash { font-weight:400; color:var(--text-dim); animation:cursorBlink 1.2s step-end infinite; }
+@keyframes cursorBlink { 0%,100%{color:var(--text-dim)} 50%{color:#e8e8ef} }
+.sidebar-nav { padding:1rem 0.8rem; flex:1; overflow-y:auto; }
+.sidebar-section { font-family:var(--font-mono); font-size:0.68rem; color:var(--text-dim); letter-spacing:0.1em; text-transform:uppercase; padding:0.8rem 0.6rem 0.4rem; }
+.sidebar-item { display:flex; align-items:center; gap:0.7rem; padding:0.6rem 0.7rem; border-radius:8px; font-size:0.88rem; color:var(--text-muted); text-decoration:none; transition:all 0.15s; cursor:pointer; margin-bottom:2px; }
+.sidebar-item:hover { background:var(--bg-card); color:var(--text); }
+.sidebar-item.active { background:var(--accent-glow); color:var(--accent); border:1px solid var(--border-accent); }
+.sidebar-item-icon { width:20px; text-align:center; font-size:0.95rem; }
+.sidebar-footer { padding:1rem; border-top:1px solid var(--border); }
+.sidebar-user { display:flex; align-items:center; gap:0.7rem; padding:0.5rem; border-radius:8px; cursor:pointer; transition:background 0.15s; }
+.sidebar-user:hover { background:var(--bg-card); }
+.user-avatar { width:32px; height:32px; border-radius:8px; background:linear-gradient(135deg, var(--accent), var(--accent-secondary)); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem; color:var(--bg); }
+.user-info { flex:1; }
+.user-name { font-size:0.85rem; font-weight:500; }
+.user-role { font-size:0.72rem; color:var(--text-dim); font-family:var(--font-mono); }
+
+/* ── Main Area ── */
+.main-area { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+
+/* Top bar */
+.topbar { display:flex; align-items:center; justify-content:space-between; padding:0.8rem 1.5rem; border-bottom:1px solid var(--border); background:var(--bg-elevated); flex-shrink:0; }
+.topbar-title { font-size:0.95rem; font-weight:600; display:flex; align-items:center; gap:0.5rem; }
+.topbar-model { font-family:var(--font-mono); font-size:0.72rem; color:var(--violet); background:var(--violet-glow); padding:0.15rem 0.5rem; border-radius:4px; }
+.topbar-actions { display:flex; gap:0.5rem; }
+.topbar-btn { background:var(--bg-card); border:1px solid var(--border); color:var(--text-muted); padding:0.4rem 0.8rem; border-radius:6px; font-family:var(--font-mono); font-size:0.75rem; cursor:pointer; transition:all 0.15s; display:flex; align-items:center; gap:0.4rem; }
+.topbar-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+/* ── Content Split ── */
+.content-split { flex:1; display:flex; overflow:hidden; }
+
+/* ── Left: Input Panel ── */
+.input-panel { flex:1; display:flex; flex-direction:column; border-right:1px solid var(--border); }
+
+.input-panel-header { padding:1.2rem 1.5rem 0; }
+.input-panel-label { font-family:var(--font-mono); font-size:0.7rem; color:var(--text-dim); letter-spacing:0.08em; text-transform:uppercase; margin-bottom:0.8rem; }
+
+/* Controls row */
+.controls-row { display:flex; gap:0.8rem; padding:0 1.5rem; margin-bottom:1rem; flex-wrap:wrap; }
+.control-group { display:flex; flex-direction:column; gap:0.3rem; }
+.control-group.grow { flex:1; min-width:140px; }
+.control-label { font-family:var(--font-mono); font-size:0.65rem; color:var(--text-dim); letter-spacing:0.06em; text-transform:uppercase; }
+.control-select { padding:0.5rem 2rem 0.5rem 0.7rem; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:var(--font-body); font-size:0.85rem; outline:none; appearance:none; cursor:pointer; background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%237a7a8f' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 0.7rem center; transition:border-color 0.15s; }
+.control-select:focus { border-color:var(--border-focus); }
+
+/* Speed slider */
+.speed-control { display:flex; align-items:center; gap:0.6rem; }
+.speed-slider { -webkit-appearance:none; appearance:none; width:80px; height:4px; background:var(--border); border-radius:2px; outline:none; cursor:pointer; }
+.speed-slider::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:var(--accent); cursor:pointer; }
+.speed-value { font-family:var(--font-mono); font-size:0.78rem; color:var(--text-muted); min-width:30px; }
+
+/* Text area */
+.text-input-wrapper { flex:1; padding:0 1.5rem 1rem; display:flex; flex-direction:column; }
+.text-area { flex:1; width:100%; padding:1rem; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; color:var(--text); font-family:var(--font-body); font-size:0.95rem; line-height:1.7; outline:none; resize:none; transition:border-color 0.2s; }
+.text-area::placeholder { color:var(--text-dim); }
+.text-area:focus { border-color:var(--border-focus); }
+
+.text-footer { display:flex; align-items:center; justify-content:space-between; padding-top:0.8rem; }
+.char-count { font-family:var(--font-mono); font-size:0.72rem; color:var(--text-dim); }
+.generate-btn { display:flex; align-items:center; gap:0.5rem; padding:0.7rem 1.5rem; background:var(--accent); color:var(--bg); border:none; border-radius:8px; font-family:var(--font-body); font-size:0.92rem; font-weight:600; cursor:pointer; transition:all 0.2s; box-shadow:0 0 24px var(--accent-glow-strong); }
+.generate-btn:hover { transform:translateY(-1px); box-shadow:0 0 40px var(--accent-glow-strong); }
+.generate-btn:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
+.generate-btn .spinner { display:none; width:16px; height:16px; border:2px solid var(--bg); border-top:2px solid transparent; border-radius:50%; animation:spin 0.6s linear infinite; }
+@keyframes spin { to{transform:rotate(360deg)} }
+
+/* ── Right: Output Panel ── */
+.output-panel { width:420px; display:flex; flex-direction:column; background:var(--bg-elevated); flex-shrink:0; }
+
+.output-panel-header { padding:1.2rem 1.2rem 0; }
+.output-panel-label { font-family:var(--font-mono); font-size:0.7rem; color:var(--text-dim); letter-spacing:0.08em; text-transform:uppercase; margin-bottom:0.8rem; }
+
+/* Current audio player */
+.audio-player { margin:0 1.2rem 1rem; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:1.2rem; }
+.audio-player.empty { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:200px; text-align:center; }
+.audio-empty-icon { font-size:2.5rem; margin-bottom:0.8rem; opacity:0.4; }
+.audio-empty-text { font-size:0.92rem; color:var(--text-dim); font-weight:300; }
+
+.player-waveform { display:flex; align-items:center; gap:2px; height:56px; margin-bottom:1rem; overflow:hidden; }
+.wave-bar { width:3px; border-radius:2px; background:var(--accent); opacity:0.3; transition:height 0.1s, opacity 0.1s; }
+.wave-bar.active { opacity:0.9; }
+
+.player-controls { display:flex; align-items:center; gap:0.8rem; margin-bottom:1rem; }
+.play-btn { width:42px; height:42px; border-radius:50%; background:var(--accent); border:none; color:var(--bg); font-size:1.1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.15s; flex-shrink:0; }
+.play-btn:hover { transform:scale(1.05); box-shadow:0 0 20px var(--accent-glow-strong); }
+.player-progress { flex:1; }
+.progress-track { height:4px; background:var(--border); border-radius:2px; cursor:pointer; position:relative; }
+.progress-played { height:100%; background:var(--accent); border-radius:2px; width:35%; transition:width 0.1s; }
+.player-time { display:flex; justify-content:space-between; margin-top:0.3rem; font-family:var(--font-mono); font-size:0.7rem; color:var(--text-dim); }
+
+.player-meta { display:flex; align-items:center; justify-content:space-between; padding-top:0.8rem; border-top:1px solid var(--border); }
+.player-meta-info { }
+.player-meta-label { font-family:var(--font-mono); font-size:0.65rem; color:var(--text-dim); letter-spacing:0.05em; text-transform:uppercase; }
+.player-meta-value { font-size:0.82rem; }
+.player-actions { display:flex; gap:0.4rem; }
+.player-action-btn { background:var(--bg); border:1px solid var(--border); color:var(--text-muted); padding:0.35rem 0.6rem; border-radius:5px; font-family:var(--font-mono); font-size:0.7rem; cursor:pointer; transition:all 0.15s; }
+.player-action-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+/* History list */
+.history-section { flex:1; overflow-y:auto; padding:0 1.2rem 1rem; }
+.history-label { font-family:var(--font-mono); font-size:0.65rem; color:var(--text-dim); letter-spacing:0.1em; text-transform:uppercase; padding:0.6rem 0 0.4rem; }
+
+.history-item { display:flex; align-items:center; gap:0.7rem; padding:0.65rem 0.7rem; border-radius:8px; cursor:pointer; transition:all 0.12s; margin-bottom:2px; }
+.history-item:hover { background:var(--bg-card); }
+.history-item.active { background:var(--accent-glow); }
+
+.history-play { width:30px; height:30px; border-radius:50%; background:var(--bg); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:0.7rem; flex-shrink:0; color:var(--text-muted); transition:all 0.15s; }
+.history-item:hover .history-play { border-color:var(--accent); color:var(--accent); }
+
+.history-info { flex:1; min-width:0; }
+.history-text { font-size:0.82rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:0.1rem; }
+.history-meta { font-family:var(--font-mono); font-size:0.68rem; color:var(--text-dim); display:flex; gap:0.6rem; }
+
+.history-duration { font-family:var(--font-mono); font-size:0.75rem; color:var(--text-dim); flex-shrink:0; }
+
+.history-delete { opacity:0; background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:0.75rem; padding:2px 4px; border-radius:4px; transition:all 0.15s; }
+.history-delete:hover { color:var(--danger); }
+.history-item:hover .history-delete { opacity:1; }
+
+/* ── Model Setup Overlay ── */
+.model-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:1000; backdrop-filter:blur(8px); animation:fadeIn 0.3s ease; }
+.model-overlay.hidden { display:none; }
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+.model-modal { background:var(--bg-elevated); border:1px solid var(--border); border-radius:16px; width:100%; max-width:520px; max-height:90vh; overflow-y:auto; padding:2rem; box-shadow:0 25px 80px rgba(0,0,0,0.6); }
+.modal-title { font-size:1.3rem; font-weight:700; margin-bottom:0.4rem; }
+.modal-desc { color:var(--text-muted); font-size:0.9rem; font-weight:300; margin-bottom:1.5rem; line-height:1.6; }
+.model-option { display:flex; align-items:center; gap:1rem; padding:1rem; border:1px solid var(--border); border-radius:10px; cursor:pointer; transition:all 0.15s; margin-bottom:0.6rem; }
+.model-option:hover { border-color:var(--border-accent); background:var(--bg-card); }
+.model-option.selected { border-color:var(--violet); background:var(--violet-glow); }
+.model-radio { width:18px; height:18px; border-radius:50%; border:2px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:border-color 0.15s; }
+.model-option.selected .model-radio { border-color:var(--violet); }
+.model-radio-dot { width:8px; height:8px; border-radius:50%; background:var(--violet); opacity:0; transition:opacity 0.15s; }
+.model-option.selected .model-radio-dot { opacity:1; }
+.model-info { flex:1; }
+.model-name { font-size:0.95rem; font-weight:600; margin-bottom:0.15rem; }
+.model-details { font-size:0.8rem; color:var(--text-muted); font-weight:300; }
+.model-size { font-family:var(--font-mono); font-size:0.72rem; color:var(--text-dim); flex-shrink:0; }
+.modal-btn { display:flex; align-items:center; justify-content:center; gap:0.5rem; width:100%; padding:0.8rem; background:var(--accent); color:var(--bg); border:none; border-radius:8px; font-family:var(--font-body); font-size:0.95rem; font-weight:600; cursor:pointer; margin-top:1rem; transition:all 0.2s; box-shadow:0 0 30px var(--accent-glow-strong); }
+.modal-btn:hover { transform:translateY(-1px); }
+.modal-btn:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
+.download-progress { display:none; margin-top:1rem; }
+.download-progress.active { display:block; }
+.progress-label { display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted); margin-bottom:0.4rem; }
+.progress-bar-dl { height:6px; background:var(--bg-card); border-radius:3px; overflow:hidden; }
+.progress-fill-dl { height:100%; background:var(--accent); border-radius:3px; width:0%; transition:width 0.3s ease; }
+.progress-status { font-family:var(--font-mono); font-size:0.72rem; color:var(--text-dim); margin-top:0.4rem; }
+
+/* Toast */
+.toast { position:fixed; bottom:2rem; right:2rem; background:var(--bg-card); border:1px solid var(--border-accent); border-radius:10px; padding:0.8rem 1.2rem; font-size:0.88rem; color:var(--accent); display:flex; align-items:center; gap:0.5rem; box-shadow:0 8px 32px rgba(0,0,0,0.4); transform:translateY(100px); opacity:0; transition:all 0.3s ease; z-index:1000; }
+.toast.show { transform:translateY(0); opacity:1; }
+
+@media (max-width: 1000px) {
+  .sidebar { display:none; }
+  .output-panel { width:100%; }
+  .content-split { flex-direction:column; }
+  .input-panel { border-right:none; border-bottom:1px solid var(--border); min-height:45vh; }
+}
+</style>
+</head>
+<body>
+<div class="app-layout">
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <a href="/dashboard" class="sidebar-logo">
+      <svg viewBox="0 0 28 28" fill="none"><path d="M14 2.5L4 7v7c0 6.1 4.3 11.5 10 13 5.7-1.5 10-6.9 10-13V7L14 2.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="14" cy="11" r="2" fill="currentColor"/><circle cx="9" cy="17" r="1.3" fill="currentColor"/><circle cx="19" cy="17" r="1.3" fill="currentColor"/><circle cx="14" cy="21" r="1.3" fill="currentColor"/><path d="M14 13v2.5l-4 2M14 15.5l4 2M9 17l5 4M19 17l-5 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span style="color:var(--accent)">local</span><span class="logo-dash">-</span><span style="color:var(--accent)">ai</span><span style="color:var(--text-dim)">.run</span>
+    </a>
+    <nav class="sidebar-nav">
+      <div class="sidebar-section">Navigation</div>
+      <a class="sidebar-item" href="/dashboard"><span class="sidebar-item-icon">📊</span> Dashboard</a>
+      <a class="sidebar-item" href="/chat"><span class="sidebar-item-icon">💬</span> Chat with Files</a>
+      <a class="sidebar-item active"><span class="sidebar-item-icon">🔊</span> Text to Audio</a>
+      <div class="sidebar-section" style="margin-top:1.2rem;">Coming Soon</div>
+      <a class="sidebar-item" style="opacity:0.4;cursor:default;"><span class="sidebar-item-icon">🖼️</span> Image Generation</a>
+      <a class="sidebar-item" style="opacity:0.4;cursor:default;"><span class="sidebar-item-icon">📝</span> Summarizer</a>
+      <a class="sidebar-item" style="opacity:0.4;cursor:default;"><span class="sidebar-item-icon">🔍</span> Semantic Search</a>
+      <div class="sidebar-section" style="margin-top:1.2rem;">System</div>
+      <a class="sidebar-item" href="/settings"><span class="sidebar-item-icon">⚙️</span> Settings</a>
+      <a class="sidebar-item" href="/model-engines"><span class="sidebar-item-icon">🔌</span> Model Engines</a>
+    </nav>
+    <div class="sidebar-footer"><div class="sidebar-user"><div class="user-avatar">A</div><div class="user-info"><div class="user-name">Ahmad</div><div class="user-role">admin</div></div></div></div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <div class="main-area">
+    <div class="topbar">
+      <div class="topbar-title">🔊 Text to Audio <span class="topbar-model">piper-en-amy · 22kHz</span></div>
+      <div class="topbar-actions">
+        <button class="topbar-btn" onclick="showToast('All audio exported')">📥 Export All</button>
+        <button class="topbar-btn">⚙️ Engine</button>
+      </div>
+    </div>
+
+    <div class="content-split">
+      <!-- ── Input Panel ── -->
+      <div class="input-panel">
+        <div class="input-panel-header">
+          <div class="input-panel-label">Input Text</div>
+        </div>
+
+        <div class="controls-row">
+          <div class="control-group grow">
+            <span class="control-label">Voice</span>
+            <select class="control-select" id="voiceSelect">
+              <option selected>Amy (English, Female)</option>
+              <option>James (English, Male)</option>
+              <option>Sofia (Spanish, Female)</option>
+              <option>Hans (German, Male)</option>
+              <option>Yuki (Japanese, Female)</option>
+              <option>Wei (Chinese, Male)</option>
+              <option>Marie (French, Female)</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <span class="control-label">Format</span>
+            <select class="control-select" id="formatSelect">
+              <option selected>.wav</option>
+              <option>.mp3</option>
+              <option>.ogg</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <span class="control-label">Speed</span>
+            <div class="speed-control">
+              <input type="range" class="speed-slider" id="speedSlider" min="0.5" max="2" step="0.1" value="1" oninput="document.getElementById('speedVal').textContent=this.value+'x'">
+              <span class="speed-value" id="speedVal">1x</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="text-input-wrapper">
+          <textarea class="text-area" id="textInput" placeholder="Type or paste the text you want to convert to speech...
+
+Try something like:
+&quot;Welcome to local-ai.run — your private, self-hosted AI platform. Everything runs on your hardware, and zero data ever leaves your network.&quot;" oninput="updateCharCount()"></textarea>
+          <div class="text-footer">
+            <span class="char-count" id="charCount">0 characters</span>
+            <button class="generate-btn" id="generateBtn" onclick="generateAudio()">
+              <span id="genText">🔊 Generate Audio</span>
+              <div class="spinner" id="genSpinner"></div>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Output Panel ── -->
+      <div class="output-panel">
+        <div class="output-panel-header">
+          <div class="output-panel-label">Output</div>
+        </div>
+
+        <!-- Current Player -->
+        <div class="audio-player" id="audioPlayer">
+          <div class="player-waveform" id="waveform"></div>
+          <div class="player-controls">
+            <button class="play-btn" id="playBtn" onclick="togglePlay()">▶</button>
+            <div class="player-progress">
+              <div class="progress-track" onclick="seekAudio(event)">
+                <div class="progress-played" id="progressPlayed"></div>
+              </div>
+              <div class="player-time">
+                <span id="currentTime">0:00</span>
+                <span id="totalTime">0:12</span>
+              </div>
+            </div>
+          </div>
+          <div class="player-meta">
+            <div class="player-meta-info">
+              <div class="player-meta-label">Voice</div>
+              <div class="player-meta-value" id="playerVoice">Amy (English)</div>
+            </div>
+            <div class="player-meta-info">
+              <div class="player-meta-label">Duration</div>
+              <div class="player-meta-value" id="playerDuration">12s</div>
+            </div>
+            <div class="player-actions">
+              <button class="player-action-btn" onclick="showToast('Audio downloaded')">⬇ Save</button>
+              <button class="player-action-btn" onclick="showToast('Copied to clipboard')">📋 Copy</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- History -->
+        <div class="history-section">
+          <div class="history-label">Generation History</div>
+
+          <div class="history-item active" onclick="selectHistory(this)">
+            <div class="history-play">▶</div>
+            <div class="history-info">
+              <div class="history-text">Welcome to local-ai.run — your private, self-hosted AI platform...</div>
+              <div class="history-meta">
+                <span>Amy · English</span>
+                <span>.wav · 22kHz</span>
+              </div>
+            </div>
+            <span class="history-duration">0:12</span>
+            <button class="history-delete" onclick="event.stopPropagation()">✕</button>
+          </div>
+
+          <div class="history-item" onclick="selectHistory(this)">
+            <div class="history-play">▶</div>
+            <div class="history-info">
+              <div class="history-text">An open-source platform for running AI models locally on your own hardware...</div>
+              <div class="history-meta">
+                <span>James · English</span>
+                <span>.mp3 · 22kHz</span>
+              </div>
+            </div>
+            <span class="history-duration">0:08</span>
+            <button class="history-delete" onclick="event.stopPropagation()">✕</button>
+          </div>
+
+          <div class="history-item" onclick="selectHistory(this)">
+            <div class="history-play">▶</div>
+            <div class="history-info">
+              <div class="history-text">Bienvenido a la plataforma de inteligencia artificial local...</div>
+              <div class="history-meta">
+                <span>Sofia · Spanish</span>
+                <span>.wav · 22kHz</span>
+              </div>
+            </div>
+            <span class="history-duration">0:15</span>
+            <button class="history-delete" onclick="event.stopPropagation()">✕</button>
+          </div>
+
+          <div class="history-item" onclick="selectHistory(this)">
+            <div class="history-play">▶</div>
+            <div class="history-info">
+              <div class="history-text">Chapter one: The fundamentals of privacy-first artificial intelligence...</div>
+              <div class="history-meta">
+                <span>Amy · English</span>
+                <span>.wav · 22kHz</span>
+              </div>
+            </div>
+            <span class="history-duration">0:34</span>
+            <button class="history-delete" onclick="event.stopPropagation()">✕</button>
+          </div>
+
+          <div class="history-item" onclick="selectHistory(this)">
+            <div class="history-play">▶</div>
+            <div class="history-info">
+              <div class="history-text">ローカルAIプラットフォームへようこそ。すべてのデータは安全に保護されます。</div>
+              <div class="history-meta">
+                <span>Yuki · Japanese</span>
+                <span>.wav · 22kHz</span>
+              </div>
+            </div>
+            <span class="history-duration">0:10</span>
+            <button class="history-delete" onclick="event.stopPropagation()">✕</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TTS Model Setup Overlay ═══ -->
+<div class="model-overlay hidden" id="modelOverlay">
+  <div class="model-modal">
+    <h2 class="modal-title">Choose a TTS engine</h2>
+    <p class="modal-desc">Select a text-to-speech model to power audio generation. The model will be downloaded and run locally.</p>
+
+    <div class="model-option" onclick="selectModel(this, 'piper')">
+      <div class="model-radio"><div class="model-radio-dot"></div></div>
+      <div class="model-info">
+        <div class="model-name">Piper</div>
+        <div class="model-details">Lightweight and fast. 20+ voices, low resource usage. Great for most use cases.</div>
+      </div>
+      <div class="model-size">45 MB</div>
+    </div>
+
+    <div class="model-option" onclick="selectModel(this, 'coqui')">
+      <div class="model-radio"><div class="model-radio-dot"></div></div>
+      <div class="model-info">
+        <div class="model-name">Coqui TTS</div>
+        <div class="model-details">High-quality neural TTS. Natural-sounding voices with fine-grained control.</div>
+      </div>
+      <div class="model-size">1.2 GB</div>
+    </div>
+
+    <div class="model-option" onclick="selectModel(this, 'bark')">
+      <div class="model-radio"><div class="model-radio-dot"></div></div>
+      <div class="model-info">
+        <div class="model-name">Bark</div>
+        <div class="model-details">Transformer-based. Supports music, laughter, and expressive speech. GPU recommended.</div>
+      </div>
+      <div class="model-size">4.8 GB</div>
+    </div>
+
+    <div class="model-option" onclick="selectModel(this, 'xtts')">
+      <div class="model-radio"><div class="model-radio-dot"></div></div>
+      <div class="model-info">
+        <div class="model-name">XTTS-v2</div>
+        <div class="model-details">Voice cloning with 6-second reference. 17 languages. Best quality, highest resource usage.</div>
+      </div>
+      <div class="model-size">6.1 GB</div>
+    </div>
+
+    <button class="modal-btn" id="downloadBtn" onclick="downloadModel()" disabled>Select an engine to continue</button>
+    <div class="download-progress" id="downloadProgress">
+      <div class="progress-label"><span id="progressModel">Downloading...</span><span id="progressPct">0%</span></div>
+      <div class="progress-bar-dl"><div class="progress-fill-dl" id="progressFill"></div></div>
+      <div class="progress-status" id="progressStatus">Preparing...</div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Waveform generation ──
+function generateWaveform() {
+  const wf = document.getElementById('waveform');
+  wf.innerHTML = '';
+  const bars = 80;
+  for (let i = 0; i < bars; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'wave-bar';
+    const h = Math.random() * 40 + 8;
+    bar.style.height = h + 'px';
+    if (i < bars * 0.35) bar.classList.add('active');
+    wf.appendChild(bar);
+  }
+}
+generateWaveform();
+
+// ── Char count ──
+function updateCharCount() {
+  const len = document.getElementById('textInput').value.length;
+  document.getElementById('charCount').textContent = len + ' character' + (len !== 1 ? 's' : '');
+}
+
+// ── Play/Pause ──
+let isPlaying = false;
+let playInterval = null;
+
+function togglePlay() {
+  const btn = document.getElementById('playBtn');
+  const progress = document.getElementById('progressPlayed');
+  const bars = document.querySelectorAll('.wave-bar');
+
+  if (isPlaying) {
+    isPlaying = false;
+    btn.textContent = '▶';
+    clearInterval(playInterval);
+  } else {
+    isPlaying = true;
+    btn.textContent = '⏸';
+    let pct = parseFloat(progress.style.width) || 0;
+    playInterval = setInterval(() => {
+      pct += 0.5;
+      if (pct > 100) { pct = 0; isPlaying = false; btn.textContent = '▶'; clearInterval(playInterval); }
+      progress.style.width = pct + '%';
+      const activeIdx = Math.floor((pct / 100) * bars.length);
+      bars.forEach((b, i) => {
+        b.classList.toggle('active', i <= activeIdx);
+      });
+      const total = 12;
+      const cur = Math.floor((pct / 100) * total);
+      document.getElementById('currentTime').textContent = '0:' + String(cur).padStart(2, '0');
+    }, 60);
+  }
+}
+
+function seekAudio(e) {
+  const track = e.currentTarget;
+  const rect = track.getBoundingClientRect();
+  const pct = ((e.clientX - rect.left) / rect.width) * 100;
+  document.getElementById('progressPlayed').style.width = pct + '%';
+}
+
+// ── Generate ──
+function generateAudio() {
+  const text = document.getElementById('textInput').value.trim();
+  if (!text) return;
+
+  const btn = document.getElementById('generateBtn');
+  const genText = document.getElementById('genText');
+  const spinner = document.getElementById('genSpinner');
+
+  btn.disabled = true;
+  genText.textContent = 'Generating...';
+  spinner.style.display = 'inline-block';
+
+  setTimeout(() => {
+    btn.disabled = false;
+    genText.textContent = '🔊 Generate Audio';
+    spinner.style.display = 'none';
+
+    // Update player
+    generateWaveform();
+    document.getElementById('progressPlayed').style.width = '0%';
+    document.getElementById('currentTime').textContent = '0:00';
+    const dur = Math.floor(text.length / 15) + 3;
+    document.getElementById('totalTime').textContent = '0:' + String(dur).padStart(2, '0');
+    document.getElementById('playerDuration').textContent = dur + 's';
+    document.getElementById('playerVoice').textContent = document.getElementById('voiceSelect').value.split('(')[0].trim();
+
+    // Add to history
+    const section = document.querySelector('.history-section');
+    const label = section.querySelector('.history-label');
+    const item = document.createElement('div');
+    item.className = 'history-item';
+    item.onclick = function() { selectHistory(this); };
+    const voice = document.getElementById('voiceSelect').value;
+    const voiceShort = voice.split('(')[0].trim() + ' · ' + voice.match(/\(([^,]+)/)[1];
+    const fmt = document.getElementById('formatSelect').value;
+    item.innerHTML = '<div class="history-play">▶</div><div class="history-info"><div class="history-text">' + text.substring(0, 80) + (text.length > 80 ? '...' : '') + '</div><div class="history-meta"><span>' + voiceShort + '</span><span>' + fmt + ' · 22kHz</span></div></div><span class="history-duration">0:' + String(dur).padStart(2, '0') + '</span><button class="history-delete" onclick="event.stopPropagation()">✕</button>';
+    label.after(item);
+    selectHistory(item);
+
+    showToast('Audio generated successfully');
+  }, 2000);
+}
+
+// ── History ──
+function selectHistory(el) {
+  document.querySelectorAll('.history-item').forEach(h => h.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// ── Model Setup ──
+let selectedModel = null;
+function selectModel(el, model) {
+  document.querySelectorAll('.model-option').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedModel = model;
+  document.getElementById('downloadBtn').disabled = false;
+  document.getElementById('downloadBtn').textContent = 'Download & Continue →';
+}
+
+function downloadModel() {
+  if (!selectedModel) return;
+  const btn = document.getElementById('downloadBtn');
+  btn.disabled = true; btn.textContent = 'Downloading...';
+  document.getElementById('downloadProgress').classList.add('active');
+  document.getElementById('progressModel').textContent = 'Downloading ' + selectedModel + '...';
+  let pct = 0;
+  const interval = setInterval(() => {
+    pct += Math.random() * 12 + 3;
+    if (pct > 100) pct = 100;
+    document.getElementById('progressPct').textContent = Math.round(pct) + '%';
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('progressStatus').textContent = pct < 40 ? 'Downloading model files...' : pct < 80 ? 'Extracting voice data...' : 'Initializing engine...';
+    if (pct >= 100) {
+      clearInterval(interval);
+      document.getElementById('progressStatus').textContent = '✔ Engine ready!';
+      setTimeout(() => document.getElementById('modelOverlay').classList.add('hidden'), 800);
+    }
+  }, 250);
+}
+
+// Toast
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = '✔ ' + msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// Uncomment to show model setup on first visit:
+// document.getElementById('modelOverlay').classList.remove('hidden');
+</script>
+</body>
+</html>

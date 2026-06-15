@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>local-ai.run — Model Engines</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #0a0a0f; --bg-elevated: #111118; --bg-card: #16161f; --bg-card-hover: #1c1c28;
+  --border: #23233a; --border-accent: #2d4a3e; --border-focus: #34d399;
+  --text: #e8e8ef; --text-muted: #7a7a8f; --text-dim: #50506a;
+  --accent: #34d399; --accent-glow: rgba(52, 211, 153, 0.15); --accent-glow-strong: rgba(52, 211, 153, 0.3);
+  --accent-secondary: #22d3ee; --accent-warm: #f59e0b; --danger: #ef4444;
+  --font-body: 'Outfit', sans-serif; --font-mono: 'JetBrains Mono', monospace;
+}
+body { font-family: var(--font-body); background: var(--bg); color: var(--text); min-height: 100vh; }
+body::before { content:''; position:fixed; inset:0; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E"); pointer-events:none; z-index:9999; }
+
+.app-layout { display: flex; min-height: 100vh; }
+.sidebar { width:260px; background:var(--bg-elevated); border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; }
+.sidebar-logo { display:flex; align-items:center; gap:0.5rem; padding:1.2rem; font-family:var(--font-mono); font-size:1rem; color:var(--accent); text-decoration:none; border-bottom:1px solid var(--border); }
+.sidebar-logo svg { width:24px; height:24px; }
+.logo-dash { font-weight:400; color:var(--text-dim); animation:cursorBlink 1.2s step-end infinite; }
+@keyframes cursorBlink { 0%,100%{color:var(--text-dim)} 50%{color:#e8e8ef} }
+.sidebar-nav { padding:1rem 0.8rem; flex:1; }
+.sidebar-section { font-family:var(--font-mono); font-size:0.68rem; color:var(--text-dim); letter-spacing:0.1em; text-transform:uppercase; padding:0.8rem 0.6rem 0.4rem; }
+.sidebar-item { display:flex; align-items:center; gap:0.7rem; padding:0.6rem 0.7rem; border-radius:8px; font-size:0.88rem; color:var(--text-muted); text-decoration:none; transition:all 0.15s; cursor:pointer; margin-bottom:2px; }
+.sidebar-item:hover { background:var(--bg-card); color:var(--text); }
+.sidebar-item.active { background:var(--accent-glow); color:var(--accent); border:1px solid var(--border-accent); }
+.sidebar-item-icon { width:20px; text-align:center; font-size:0.95rem; }
+.sidebar-footer { padding:1rem; border-top:1px solid var(--border); }
+.sidebar-user { display:flex; align-items:center; gap:0.7rem; padding:0.5rem; border-radius:8px; cursor:pointer; transition:background 0.15s; }
+.sidebar-user:hover { background:var(--bg-card); }
+.user-avatar { width:32px; height:32px; border-radius:8px; background:linear-gradient(135deg, var(--accent), var(--accent-secondary)); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem; color:var(--bg); }
+.user-info { flex:1; }
+.user-name { font-size:0.85rem; font-weight:500; }
+.user-role { font-size:0.72rem; color:var(--text-dim); font-family:var(--font-mono); }
+
+.main-content { flex:1; padding:2.5rem 3rem; overflow-y:auto; }
+.page-header { margin-bottom:2rem; display:flex; align-items:flex-start; justify-content:space-between; }
+.page-header-left {}
+.page-title { font-size:2rem; font-weight:700; letter-spacing:-0.02em; margin-bottom:0.3rem; }
+.page-desc { color:var(--text-muted); font-size:0.95rem; font-weight:300; }
+
+/* Buttons */
+.btn-save { display:inline-flex; align-items:center; gap:0.5rem; padding:0.7rem 1.5rem; background:var(--accent); color:var(--bg); border:none; border-radius:8px; font-family:var(--font-body); font-size:0.9rem; font-weight:600; cursor:pointer; transition:all 0.2s; box-shadow:0 0 20px var(--accent-glow); }
+.btn-save:hover { transform:translateY(-1px); box-shadow:0 0 40px var(--accent-glow-strong); }
+.btn-outline { display:inline-flex; align-items:center; gap:0.5rem; padding:0.55rem 1rem; background:transparent; color:var(--text-muted); border:1px solid var(--border); border-radius:6px; font-family:var(--font-body); font-size:0.82rem; font-weight:500; cursor:pointer; transition:all 0.15s; }
+.btn-outline:hover { border-color:var(--text-muted); color:var(--text); }
+.btn-sm { padding:0.4rem 0.8rem; font-size:0.78rem; border-radius:6px; }
+.btn-danger-sm { display:inline-flex; align-items:center; gap:0.3rem; padding:0.4rem 0.8rem; background:transparent; color:var(--danger); border:1px solid rgba(239,68,68,0.3); border-radius:6px; font-family:var(--font-body); font-size:0.78rem; cursor:pointer; transition:all 0.15s; }
+.btn-danger-sm:hover { background:rgba(239,68,68,0.1); border-color:var(--danger); }
+
+/* ── Provider Cards ── */
+.section-label { font-family:var(--font-mono); font-size:0.75rem; color:var(--text-dim); letter-spacing:0.1em; text-transform:uppercase; margin-bottom:1rem; margin-top:2.5rem; }
+.section-label:first-of-type { margin-top:0; }
+
+.provider-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:1rem; }
+
+.provider-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:1.5rem; position:relative; overflow:hidden; transition:all 0.2s; }
+.provider-card:hover { border-color:var(--border-accent); }
+.provider-card.connected { border-color:var(--border-accent); }
+.provider-card.connected::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:var(--accent); }
+
+.provider-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem; }
+.provider-name-group { display:flex; align-items:center; gap:0.7rem; }
+.provider-icon { width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; background:var(--bg); border:1px solid var(--border); }
+.provider-name { font-size:1.05rem; font-weight:600; }
+.provider-status { font-family:var(--font-mono); font-size:0.68rem; padding:0.2rem 0.55rem; border-radius:4px; letter-spacing:0.04em; }
+.status-connected { color:var(--accent); background:var(--accent-glow); }
+.status-available { color:var(--text-dim); background:var(--bg); border:1px solid var(--border); }
+.status-default { color:var(--bg); background:var(--accent); font-weight:600; }
+
+.provider-desc { color:var(--text-muted); font-size:0.85rem; font-weight:300; line-height:1.5; margin-bottom:1rem; }
+
+.provider-meta { display:flex; gap:1.5rem; margin-bottom:1rem; }
+.provider-meta-item { display:flex; flex-direction:column; gap:0.15rem; }
+.provider-meta-label { font-family:var(--font-mono); font-size:0.65rem; color:var(--text-dim); letter-spacing:0.05em; text-transform:uppercase; }
+.provider-meta-value { font-size:0.85rem; font-weight:500; }
+
+.provider-actions { display:flex; gap:0.5rem; }
+
+/* ── Downloaded Models ── */
+.models-table { width:100%; margin-top:0.5rem; }
+.models-table-header { display:grid; grid-template-columns:2fr 1fr 1fr 1fr auto; gap:1rem; padding:0.6rem 1rem; font-family:var(--font-mono); font-size:0.68rem; color:var(--text-dim); letter-spacing:0.06em; text-transform:uppercase; border-bottom:1px solid var(--border); }
+.model-row { display:grid; grid-template-columns:2fr 1fr 1fr 1fr auto; gap:1rem; padding:0.8rem 1rem; align-items:center; border-bottom:1px solid var(--border); transition:background 0.12s; }
+.model-row:hover { background:var(--bg-card-hover); }
+.model-row:last-child { border-bottom:none; }
+
+.model-name-cell { display:flex; align-items:center; gap:0.6rem; }
+.model-name-text { font-size:0.9rem; font-weight:500; }
+.model-tag { font-family:var(--font-mono); font-size:0.62rem; padding:0.1rem 0.4rem; border-radius:3px; color:var(--accent); background:var(--accent-glow); }
+.model-size-cell { font-family:var(--font-mono); font-size:0.82rem; color:var(--text-muted); }
+.model-param-cell { font-family:var(--font-mono); font-size:0.82rem; color:var(--text-muted); }
+.model-status-cell { font-family:var(--font-mono); font-size:0.75rem; }
+.model-status-ready { color:var(--accent); }
+.model-status-downloading { color:var(--accent-warm); }
+.model-actions-cell { display:flex; gap:0.4rem; }
+
+/* ── Config panel ── */
+.config-section { margin-top:2rem; }
+.config-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:1.5rem; }
+.config-title { font-size:1rem; font-weight:600; margin-bottom:0.3rem; }
+.config-desc { color:var(--text-dim); font-size:0.85rem; font-weight:300; margin-bottom:1.2rem; }
+
+.config-row { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem; }
+.form-label { display:block; font-family:var(--font-mono); font-size:0.72rem; color:var(--text-muted); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:0.4rem; }
+.form-input { width:100%; padding:0.65rem 0.9rem; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:var(--font-mono); font-size:0.85rem; outline:none; transition:border-color 0.2s; }
+.form-input:focus { border-color:var(--border-focus); }
+.form-select { width:100%; padding:0.65rem 0.9rem; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:var(--font-body); font-size:0.85rem; outline:none; appearance:none; cursor:pointer; background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%237a7a8f' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 0.9rem center; }
+.form-hint { font-size:0.72rem; color:var(--text-dim); margin-top:0.3rem; }
+
+/* ── Test connection ── */
+.test-bar { display:flex; align-items:center; gap:1rem; padding:0.8rem 1rem; background:var(--bg); border:1px solid var(--border); border-radius:8px; margin-top:1rem; }
+.test-indicator { width:10px; height:10px; border-radius:50%; background:var(--text-dim); flex-shrink:0; }
+.test-indicator.success { background:var(--accent); box-shadow:0 0 8px var(--accent-glow-strong); }
+.test-indicator.error { background:var(--danger); }
+.test-indicator.loading { background:var(--accent-warm); animation:pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.test-text { flex:1; font-family:var(--font-mono); font-size:0.8rem; color:var(--text-muted); }
+.test-latency { font-family:var(--font-mono); font-size:0.75rem; color:var(--accent); }
+
+/* Toast */
+.toast { position:fixed; bottom:2rem; right:2rem; background:var(--bg-card); border:1px solid var(--border-accent); border-radius:10px; padding:0.8rem 1.2rem; font-size:0.88rem; color:var(--accent); display:flex; align-items:center; gap:0.5rem; box-shadow:0 8px 32px rgba(0,0,0,0.4); transform:translateY(100px); opacity:0; transition:all 0.3s ease; z-index:1000; }
+.toast.show { transform:translateY(0); opacity:1; }
+
+/* Pull modal */
+.pull-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:1000; backdrop-filter:blur(8px); }
+.pull-overlay.hidden { display:none; }
+.pull-modal { background:var(--bg-elevated); border:1px solid var(--border); border-radius:16px; width:100%; max-width:460px; padding:2rem; box-shadow:0 25px 80px rgba(0,0,0,0.6); }
+.pull-modal h3 { font-size:1.2rem; font-weight:600; margin-bottom:0.4rem; }
+.pull-modal p { color:var(--text-muted); font-size:0.88rem; font-weight:300; margin-bottom:1.2rem; }
+.pull-input-row { display:flex; gap:0.5rem; }
+.pull-input { flex:1; padding:0.7rem 1rem; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:var(--font-mono); font-size:0.88rem; outline:none; }
+.pull-input:focus { border-color:var(--border-focus); }
+.pull-btn { padding:0.7rem 1.2rem; background:var(--accent); color:var(--bg); border:none; border-radius:8px; font-family:var(--font-body); font-weight:600; font-size:0.88rem; cursor:pointer; white-space:nowrap; }
+.pull-close { background:none; border:none; color:var(--text-dim); font-size:1.2rem; cursor:pointer; position:absolute; top:1rem; right:1rem; }
+.pull-hint { font-family:var(--font-mono); font-size:0.72rem; color:var(--text-dim); margin-top:0.6rem; }
+
+@media (max-width: 900px) {
+  .sidebar { display:none; }
+  .main-content { padding:1.5rem; }
+  .provider-grid { grid-template-columns:1fr; }
+  .models-table-header, .model-row { grid-template-columns:2fr 1fr auto; }
+  .model-param-cell, .model-status-cell { display:none; }
+  .config-row { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <a href="dashboard.html" class="sidebar-logo">
+      <svg viewBox="0 0 28 28" fill="none"><path d="M14 2.5L4 7v7c0 6.1 4.3 11.5 10 13 5.7-1.5 10-6.9 10-13V7L14 2.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="14" cy="11" r="2" fill="currentColor"/><circle cx="9" cy="17" r="1.3" fill="currentColor"/><circle cx="19" cy="17" r="1.3" fill="currentColor"/><circle cx="14" cy="21" r="1.3" fill="currentColor"/><path d="M14 13v2.5l-4 2M14 15.5l4 2M9 17l5 4M19 17l-5 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span style="color:var(--accent)">local</span><span class="logo-dash">-</span><span style="color:var(--accent)">ai</span><span style="color:var(--text-dim)">.run</span>
+    </a>
+    <nav class="sidebar-nav">
+      <div class="sidebar-section">Navigation</div>
+      <a class="sidebar-item" href="dashboard.html"><span class="sidebar-item-icon">📊</span> Dashboard</a>
+      <a class="sidebar-item" href="chat.html"><span class="sidebar-item-icon">💬</span> Chat with Files</a>
+      <a class="sidebar-item"><span class="sidebar-item-icon">🔊</span> Text to Audio</a>
+      <div class="sidebar-section" style="margin-top:1.2rem;">Coming Soon</div>
+      <a class="sidebar-item" style="opacity:0.4;cursor:default;"><span class="sidebar-item-icon">🖼️</span> Image Generation</a>
+      <a class="sidebar-item" style="opacity:0.4;cursor:default;"><span class="sidebar-item-icon">📝</span> Summarizer</a>
+      <a class="sidebar-item" style="opacity:0.4;cursor:default;"><span class="sidebar-item-icon">🔍</span> Semantic Search</a>
+      <div class="sidebar-section" style="margin-top:1.2rem;">System</div>
+      <a class="sidebar-item" href="settings.html"><span class="sidebar-item-icon">⚙️</span> Settings</a>
+      <a class="sidebar-item active"><span class="sidebar-item-icon">🔌</span> Model Engines</a>
+    </nav>
+    <div class="sidebar-footer"><div class="sidebar-user"><div class="user-avatar">A</div><div class="user-info"><div class="user-name">Ahmad</div><div class="user-role">admin</div></div></div></div>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header-left">
+        <h1 class="page-title">Model Engines</h1>
+        <p class="page-desc">Connect, manage, and configure your inference providers and downloaded models.</p>
+      </div>
+      <button class="btn-save" onclick="document.getElementById('pullOverlay').classList.remove('hidden')">+ Pull Model</button>
+    </div>
+
+    <!-- ── Connected Providers ── -->
+    <div class="section-label">Connected Providers</div>
+    <div class="provider-grid">
+      <div class="provider-card connected">
+        <div class="provider-header">
+          <div class="provider-name-group">
+            <div class="provider-icon">🦙</div>
+            <div class="provider-name">Ollama</div>
+          </div>
+          <span class="provider-status status-default">Default</span>
+        </div>
+        <div class="provider-desc">Local model runner. Pull and manage models with simple commands. GPU and CPU support.</div>
+        <div class="provider-meta">
+          <div class="provider-meta-item"><span class="provider-meta-label">Endpoint</span><span class="provider-meta-value">localhost:11434</span></div>
+          <div class="provider-meta-item"><span class="provider-meta-label">Models</span><span class="provider-meta-value">3 downloaded</span></div>
+          <div class="provider-meta-item"><span class="provider-meta-label">GPU</span><span class="provider-meta-value" style="color:var(--accent)">Active</span></div>
+        </div>
+        <div class="provider-actions">
+          <button class="btn-outline btn-sm" onclick="testConnection(this, true)">🔍 Test Connection</button>
+          <button class="btn-outline btn-sm">⚙️ Configure</button>
+        </div>
+        <div class="test-bar" id="test-ollama" style="display:none;">
+          <div class="test-indicator"></div>
+          <span class="test-text">Ready</span>
+          <span class="test-latency"></span>
+        </div>
+      </div>
+
+      <div class="provider-card connected">
+        <div class="provider-header">
+          <div class="provider-name-group">
+            <div class="provider-icon">🖥️</div>
+            <div class="provider-name">LM Studio</div>
+          </div>
+          <span class="provider-status status-connected">Connected</span>
+        </div>
+        <div class="provider-desc">GUI-based model manager with an OpenAI-compatible server. Great for experimentation.</div>
+        <div class="provider-meta">
+          <div class="provider-meta-item"><span class="provider-meta-label">Endpoint</span><span class="provider-meta-value">localhost:1234</span></div>
+          <div class="provider-meta-item"><span class="provider-meta-label">Models</span><span class="provider-meta-value">Via LM Studio UI</span></div>
+          <div class="provider-meta-item"><span class="provider-meta-label">Protocol</span><span class="provider-meta-value">OpenAI-compat</span></div>
+        </div>
+        <div class="provider-actions">
+          <button class="btn-outline btn-sm" onclick="testConnection(this, true)">🔍 Test Connection</button>
+          <button class="btn-outline btn-sm">⚙️ Configure</button>
+          <button class="btn-outline btn-sm">Set as Default</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Available Providers ── -->
+    <div class="section-label">Available Providers</div>
+    <div class="provider-grid">
+      <div class="provider-card">
+        <div class="provider-header">
+          <div class="provider-name-group">
+            <div class="provider-icon">⚡</div>
+            <div class="provider-name">vLLM</div>
+          </div>
+          <span class="provider-status status-available">Not Connected</span>
+        </div>
+        <div class="provider-desc">High-throughput serving with PagedAttention. Best for multi-user setups with high concurrency.</div>
+        <div class="provider-meta">
+          <div class="provider-meta-item"><span class="provider-meta-label">Default Port</span><span class="provider-meta-value">8000</span></div>
+          <div class="provider-meta-item"><span class="provider-meta-label">GPU Required</span><span class="provider-meta-value">Yes</span></div>
+        </div>
+        <div class="provider-actions">
+          <button class="btn-save" style="padding:0.45rem 1rem;font-size:0.82rem;box-shadow:none;">+ Connect</button>
+        </div>
+      </div>
+
+      <div class="provider-card">
+        <div class="provider-header">
+          <div class="provider-name-group">
+            <div class="provider-icon">🔧</div>
+            <div class="provider-name">llama.cpp</div>
+          </div>
+          <span class="provider-status status-available">Not Connected</span>
+        </div>
+        <div class="provider-desc">Lightweight C++ inference. Runs on CPU, Apple Silicon, and CUDA with minimal overhead.</div>
+        <div class="provider-meta">
+          <div class="provider-meta-item"><span class="provider-meta-label">Default Port</span><span class="provider-meta-value">8080</span></div>
+          <div class="provider-meta-item"><span class="provider-meta-label">GPU Required</span><span class="provider-meta-value">No</span></div>
+        </div>
+        <div class="provider-actions">
+          <button class="btn-save" style="padding:0.45rem 1rem;font-size:0.82rem;box-shadow:none;">+ Connect</button>
+        </div>
+      </div>
+
+      <div class="provider-card">
+        <div class="provider-header">
+          <div class="provider-name-group">
+            <div class="provider-icon">🌐</div>
+            <div class="provider-name">Custom Endpoint</div>
+          </div>
+          <span class="provider-status status-available">Not Connected</span>
+        </div>
+        <div class="provider-desc">Connect any OpenAI-compatible API server. Use your own inference setup with a custom URL.</div>
+        <div class="provider-meta">
+          <div class="provider-meta-item"><span class="provider-meta-label">Protocol</span><span class="provider-meta-value">/v1/chat/completions</span></div>
+        </div>
+        <div class="provider-actions">
+          <button class="btn-save" style="padding:0.45rem 1rem;font-size:0.82rem;box-shadow:none;">+ Connect</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Downloaded Models ── -->
+    <div class="section-label">Downloaded Models (Ollama)</div>
+    <div class="config-card">
+      <div class="models-table">
+        <div class="models-table-header">
+          <span>Model</span>
+          <span>Size</span>
+          <span>Parameters</span>
+          <span>Status</span>
+          <span>Actions</span>
+        </div>
+
+        <div class="model-row">
+          <div class="model-name-cell">
+            <span class="model-name-text">llama3.2</span>
+            <span class="model-tag">default</span>
+          </div>
+          <span class="model-size-cell">3.8 GB</span>
+          <span class="model-param-cell">8B</span>
+          <span class="model-status-cell model-status-ready">● Ready</span>
+          <div class="model-actions-cell">
+            <button class="btn-outline btn-sm">Set Default</button>
+            <button class="btn-danger-sm">Remove</button>
+          </div>
+        </div>
+
+        <div class="model-row">
+          <div class="model-name-cell">
+            <span class="model-name-text">mistral</span>
+          </div>
+          <span class="model-size-cell">4.1 GB</span>
+          <span class="model-param-cell">7B</span>
+          <span class="model-status-cell model-status-ready">● Ready</span>
+          <div class="model-actions-cell">
+            <button class="btn-outline btn-sm">Set Default</button>
+            <button class="btn-danger-sm">Remove</button>
+          </div>
+        </div>
+
+        <div class="model-row">
+          <div class="model-name-cell">
+            <span class="model-name-text">nomic-embed-text</span>
+            <span class="model-tag">embeddings</span>
+          </div>
+          <span class="model-size-cell">274 MB</span>
+          <span class="model-param-cell">137M</span>
+          <span class="model-status-cell model-status-ready">● Ready</span>
+          <div class="model-actions-cell">
+            <button class="btn-outline btn-sm" disabled style="opacity:0.4">Set Default</button>
+            <button class="btn-danger-sm">Remove</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Default Model Config ── -->
+    <div class="config-section">
+      <div class="section-label">Feature → Model Mapping</div>
+      <div class="config-card">
+        <div class="config-title">Assign models per feature</div>
+        <div class="config-desc">Choose which model and provider powers each feature. Changes take effect immediately.</div>
+        <div class="config-row">
+          <div>
+            <label class="form-label">💬 Chat with Files</label>
+            <select class="form-select">
+              <option selected>llama3.2 (Ollama)</option>
+              <option>mistral (Ollama)</option>
+              <option>LM Studio — active model</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">📄 Embeddings</label>
+            <select class="form-select">
+              <option selected>nomic-embed-text (Ollama)</option>
+              <option>all-minilm (Ollama — not downloaded)</option>
+            </select>
+          </div>
+        </div>
+        <div class="config-row">
+          <div>
+            <label class="form-label">🔊 Text to Audio</label>
+            <select class="form-select">
+              <option selected>piper-en-amy (Built-in)</option>
+              <option>xtts-v2 (Not downloaded)</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">📝 Summarizer <span style="color:var(--accent-warm);font-size:0.6rem;">COMING SOON</span></label>
+            <select class="form-select" disabled style="opacity:0.4">
+              <option>Not available yet</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:1rem;">
+          <button class="btn-save" onclick="showToast()">Save Configuration</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── Pull Model Modal ── -->
+<div class="pull-overlay hidden" id="pullOverlay">
+  <div class="pull-modal" style="position:relative;">
+    <button class="pull-close" onclick="document.getElementById('pullOverlay').classList.add('hidden')">✕</button>
+    <h3>Pull a new model</h3>
+    <p>Enter the Ollama model name to download. Browse available models at <a href="https://ollama.com/library" target="_blank" style="color:var(--accent)">ollama.com/library</a>.</p>
+    <div class="pull-input-row">
+      <input class="pull-input" placeholder="e.g. phi3, deepseek-r1, qwen2.5" id="pullInput">
+      <button class="pull-btn" onclick="pullModel()">Pull</button>
+    </div>
+    <div class="pull-hint">Popular: llama3.2 · mistral · qwen2.5 · deepseek-r1 · phi3 · gemma2</div>
+  </div>
+</div>
+
+<div class="toast" id="toast">✔ Configuration saved</div>
+
+<script>
+function testConnection(btn, success) {
+  const card = btn.closest('.provider-card');
+  let testBar = card.querySelector('.test-bar');
+  testBar.style.display = 'flex';
+  const indicator = testBar.querySelector('.test-indicator');
+  const text = testBar.querySelector('.test-text');
+  const latency = testBar.querySelector('.test-latency');
+  indicator.className = 'test-indicator loading';
+  text.textContent = 'Testing connection...';
+  latency.textContent = '';
+  setTimeout(() => {
+    if (success) {
+      indicator.className = 'test-indicator success';
+      text.textContent = 'Connection successful';
+      latency.textContent = '12ms';
+    } else {
+      indicator.className = 'test-indicator error';
+      text.textContent = 'Connection failed';
+      latency.textContent = '';
+    }
+  }, 1200);
+}
+
+function pullModel() {
+  const name = document.getElementById('pullInput').value.trim();
+  if (!name) return;
+  document.getElementById('pullOverlay').classList.add('hidden');
+  showToast('Pulling ' + name + '...');
+  document.getElementById('pullInput').value = '';
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = '✔ ' + (msg || 'Configuration saved');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+</script>
+</body>
+</html>

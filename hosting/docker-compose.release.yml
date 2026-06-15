@@ -1,0 +1,193 @@
+# Production / end-user stack: pre-built images only — no application source bind mounts.
+# Use with: docker compose -f docker-compose.release.yml pull && docker compose -f docker-compose.release.yml up -d
+# Image tags: override LOCAL_AI_IMAGE_PREFIX / LOCAL_AI_IMAGE_TAG in .env (see .env.example).
+# Defaults match .env.example so compose works if those keys are missing.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: local-ai-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      nextjs:
+        condition: service_healthy
+      django:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - local-ai-net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: local-ai-postgres
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - local-ai-net
+
+  # Bundled Ollama image. Omit by removing container-ollama from COMPOSE_PROFILES to use host Ollama instead.
+  ollama:
+    image: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}/local-ai-ollama:${LOCAL_AI_STABLE_TAG:-${LOCAL_AI_IMAGE_TAG:?missing in .env}}
+    container_name: local-ai-ollama
+    profiles:
+      - container-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - local-ai-net
+
+  django:
+    image: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}/local-ai-django:${LOCAL_AI_IMAGE_TAG:?missing in .env}
+    container_name: local-ai-django
+    restart: unless-stopped
+    user: "0"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_DEBUG: ${DJANGO_DEBUG}
+      ALLOWED_HOSTS: localhost,127.0.0.1,django,api.local-ai.localhost
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      RAG_SERVICE_URL: http://rag:8080
+      RAG_API_KEY: ${RAG_API_KEY}
+      WHISPER_SERVICE_URL: http://whisper:8090
+      WHISPER_API_KEY: ${WHISPER_API_KEY}
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+      UPDATER_SERVICE_URL: http://updater:8070
+      UPDATER_API_KEY: ${UPDATER_API_KEY:-defaultkey}
+      APP_VERSION: ${LOCAL_AI_IMAGE_TAG:?missing in .env}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/auth/setup-status/')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - local-ai-net
+
+  nextjs:
+    image: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}/local-ai-nextjs:${LOCAL_AI_IMAGE_TAG:?missing in .env}
+    container_name: local-ai-nextjs
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://django:8000
+      RAG_URL: http://rag:8080
+      RAG_API_KEY: ${RAG_API_KEY}
+    depends_on:
+      django:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('net').connect({port:3000,host:'127.0.0.1'},()=>process.exit(0)).on('error',()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - local-ai-net
+
+  rag:
+    image: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}/local-ai-rag:${LOCAL_AI_IMAGE_TAG:?missing in .env}
+    container_name: local-ai-rag
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      RAG_API_KEY: ${RAG_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - local-ai-net
+
+  whisper:
+    image: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}/local-ai-whisper:${LOCAL_AI_STABLE_TAG:-${LOCAL_AI_IMAGE_TAG:?missing in .env}}
+    container_name: local-ai-whisper
+    restart: unless-stopped
+    environment:
+      WHISPER_API_KEY: ${WHISPER_API_KEY}
+      WHISPER_MODEL: ${WHISPER_MODEL:-base}
+      WHISPER_COMPUTE_TYPE: int8
+    volumes:
+      - whisper_models:/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - local-ai-net
+
+  updater:
+    image: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}/local-ai-updater:${LOCAL_AI_IMAGE_TAG:?missing in .env}
+    container_name: local-ai-updater
+    restart: unless-stopped
+    environment:
+      UPDATER_API_KEY: ${UPDATER_API_KEY:-defaultkey}
+      LOCAL_AI_IMAGE_PREFIX: ${LOCAL_AI_IMAGE_PREFIX:?missing in .env}
+      CURRENT_VERSION: ${LOCAL_AI_IMAGE_TAG:?missing in .env}
+    volumes:
+      - .:/project
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8070/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - local-ai-net
+
+volumes:
+  postgres_data:
+  ollama_data:
+  whisper_models:
+
+networks:
+  local-ai-net:
+    driver: bridge

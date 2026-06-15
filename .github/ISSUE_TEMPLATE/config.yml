@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Install help & troubleshooting
+    url: https://docs.local-ai.run/troubleshooting
+    about: Common install / setup problems are documented here. Try this first.
+  - name: Discord community
+    url: https://discord.gg/vndd7TzhVU
+    about: Real-time chat for install help, model engine questions, and general discussion.
+  - name: GitHub Discussions
+    url: https://github.com/360solutions-dev/local-ai/discussions
+    about: Long-form questions, design proposals, and "show and tell" — not bugs.
+  - name: Security disclosure
+    url: mailto:security@local-ai.run
+    about: Found a security vulnerability? Please report privately by email — not a public issue.

@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>local-ai.run — Settings</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #0a0a0f; --bg-elevated: #111118; --bg-card: #16161f; --bg-card-hover: #1c1c28;
+  --border: #23233a; --border-accent: #2d4a3e; --border-focus: #34d399;
+  --text: #e8e8ef; --text-muted: #7a7a8f; --text-dim: #50506a;
+  --accent: #34d399; --accent-glow: rgba(52, 211, 153, 0.15); --accent-glow-strong: rgba(52, 211, 153, 0.3);
+  --accent-secondary: #22d3ee; --accent-warm: #f59e0b; --danger: #ef4444; --danger-glow: rgba(239,68,68,0.1);
+  --font-body: 'Outfit', sans-serif; --font-mono: 'JetBrains Mono', monospace;
+}
+body { font-family: var(--font-body); background: var(--bg); color: var(--text); min-height: 100vh; }
+body::before { content:''; position:fixed; inset:0; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E"); pointer-events:none; z-index:9999; }
+
+/* ── Layout ── */
+.app-layout { display: flex; min-height: 100vh; }
+.sidebar { width:260px; background:var(--bg-elevated); border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; }
+.sidebar-logo { display:flex; align-items:center; gap:0.5rem; padding:1.2rem; font-family:var(--font-mono); font-size:1rem; color:var(--accent); text-decoration:none; border-bottom:1px solid var(--border); }
+.sidebar-logo svg { width:24px; height:24px; }
+.logo-dash { font-weight:400; color:var(--text-dim); animation:cursorBlink 1.2s step-end infinite; }
+@keyframes cursorBlink { 0%,100%{color:var(--text-dim)} 50%{color:#e8e8ef} }
+.sidebar-nav { padding:1rem 0.8rem; flex:1; }
+.sidebar-section { font-family:var(--font-mono); font-size:0.68rem; color:var(--text-dim); letter-spacing:0.1em; text-transform:uppercase; padding:0.8rem 0.6rem 0.4rem; }
+.sidebar-item { display:flex; align-items:center; gap:0.7rem; padding:0.6rem 0.7rem; border-radius:8px; font-size:0.88rem; color:var(--text-muted); text-decoration:none; transition:all 0.15s; cursor:pointer; margin-bottom:2px; }
+.sidebar-item:hover { background:var(--bg-card); color:var(--text); }
+.sidebar-item.active { background:var(--accent-glow); color:var(--accent); border:1px solid var(--border-accent); }
+.sidebar-item-icon { width:20px; text-align:center; font-size:0.95rem; }
+.sidebar-footer { padding:1rem; border-top:1px solid var(--border); }
+.sidebar-user { display:flex; align-items:center; gap:0.7rem; padding:0.5rem; border-radius:8px; cursor:pointer; transition:background 0.15s; }
+.sidebar-user:hover { background:var(--bg-card); }
+.user-avatar { width:32px; height:32px; border-radius:8px; background:linear-gradient(135deg, var(--accent), var(--accent-secondary)); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem; color:var(--bg); }
+.user-info { flex:1; }
+.user-name { font-size:0.85rem; font-weight:500; }
+.user-role { font-size:0.72rem; color:var(--text-dim); font-family:var(--font-mono); }
+
+/* ── Main ── */
+.main-content { flex:1; padding:2.5rem 3rem; overflow-y:auto; }
+.page-header { margin-bottom:2rem; }
+.page-title { font-size:2rem; font-weight:700; letter-spacing:-0.02em; margin-bottom:0.3rem; }
+.page-desc { color:var(--text-muted); font-size:0.95rem; font-weight:300; }
+
+/* ── Settings Tabs ── */
+.settings-tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:2rem; }
+.settings-tab { padding:0.7rem 1.2rem; font-size:0.88rem; font-weight:500; color:var(--text-dim); cursor:pointer; border-bottom:2px solid transparent; transition:all 0.15s; position:relative; bottom:-1px; }
+.settings-tab:hover { color:var(--text-muted); }
+.settings-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+
+/* ── Panels ── */
+.tab-panel { display:none; max-width:680px; }
+.tab-panel.active { display:block; }
+
+/* ── Settings Sections ── */
+.settings-section { margin-bottom:2.5rem; }
+.settings-section-title { font-size:1.1rem; font-weight:600; margin-bottom:0.3rem; }
+.settings-section-desc { color:var(--text-dim); font-size:0.85rem; font-weight:300; margin-bottom:1.2rem; }
+
+/* ── Form Elements ── */
+.form-row { margin-bottom:1.2rem; }
+.form-row-inline { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.2rem; }
+.form-label { display:block; font-family:var(--font-mono); font-size:0.72rem; color:var(--text-muted); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:0.4rem; }
+.form-input { width:100%; padding:0.7rem 0.9rem; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:var(--font-body); font-size:0.9rem; outline:none; transition:border-color 0.2s, box-shadow 0.2s; }
+.form-input::placeholder { color:var(--text-dim); }
+.form-input:focus { border-color:var(--border-focus); box-shadow:0 0 0 3px var(--accent-glow); }
+.form-input:disabled { opacity:0.5; cursor:not-allowed; }
+.form-hint { font-size:0.75rem; color:var(--text-dim); margin-top:0.3rem; }
+
+.form-select { width:100%; padding:0.7rem 0.9rem; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:var(--font-body); font-size:0.9rem; outline:none; appearance:none; cursor:pointer; background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%237a7a8f' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 0.9rem center; transition:border-color 0.2s; }
+.form-select:focus { border-color:var(--border-focus); }
+
+/* Toggle */
+.toggle-row { display:flex; align-items:center; justify-content:space-between; padding:0.8rem 0; border-bottom:1px solid var(--border); }
+.toggle-row:last-child { border-bottom:none; }
+.toggle-info { flex:1; }
+.toggle-title { font-size:0.92rem; font-weight:500; margin-bottom:0.15rem; }
+.toggle-desc { font-size:0.8rem; color:var(--text-dim); font-weight:300; }
+.toggle-switch { width:42px; height:24px; border-radius:12px; background:var(--border); cursor:pointer; position:relative; transition:background 0.2s; flex-shrink:0; margin-left:1rem; }
+.toggle-switch.on { background:var(--accent); }
+.toggle-switch::after { content:''; position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:#fff; transition:transform 0.2s; }
+.toggle-switch.on::after { transform:translateX(18px); }
+
+/* Buttons */
+.btn-save { display:inline-flex; align-items:center; gap:0.5rem; padding:0.7rem 1.5rem; background:var(--accent); color:var(--bg); border:none; border-radius:8px; font-family:var(--font-body); font-size:0.9rem; font-weight:600; cursor:pointer; transition:all 0.2s; box-shadow:0 0 20px var(--accent-glow); }
+.btn-save:hover { transform:translateY(-1px); box-shadow:0 0 40px var(--accent-glow-strong); }
+.btn-outline { display:inline-flex; align-items:center; gap:0.5rem; padding:0.7rem 1.5rem; background:transparent; color:var(--text-muted); border:1px solid var(--border); border-radius:8px; font-family:var(--font-body); font-size:0.9rem; font-weight:500; cursor:pointer; transition:all 0.15s; }
+.btn-outline:hover { border-color:var(--text-muted); color:var(--text); }
+.btn-danger { display:inline-flex; align-items:center; gap:0.5rem; padding:0.7rem 1.5rem; background:transparent; color:var(--danger); border:1px solid rgba(239,68,68,0.3); border-radius:8px; font-family:var(--font-body); font-size:0.9rem; font-weight:500; cursor:pointer; transition:all 0.15s; }
+.btn-danger:hover { background:var(--danger-glow); border-color:var(--danger); }
+.btn-group { display:flex; gap:0.6rem; margin-top:1rem; }
+
+/* Danger zone */
+.danger-zone { border:1px solid rgba(239,68,68,0.2); border-radius:12px; padding:1.5rem; background:rgba(239,68,68,0.03); }
+.danger-zone-title { font-size:1rem; font-weight:600; color:var(--danger); margin-bottom:0.3rem; }
+.danger-zone-desc { font-size:0.85rem; color:var(--text-dim); font-weight:300; margin-bottom:1rem; }
+.danger-item { display:flex; align-items:center; justify-content:space-between; padding:0.8rem 0; border-bottom:1px solid rgba(239,68,68,0.1); }
+.danger-item:last-child { border-bottom:none; }
+.danger-item-info h4 { font-size:0.9rem; font-weight:500; margin-bottom:0.1rem; }
+.danger-item-info p { font-size:0.8rem; color:var(--text-dim); font-weight:300; }
+
+/* Storage bar */
+.storage-bar-container { margin-top:0.5rem; }
+.storage-bar { height:8px; background:var(--bg); border-radius:4px; overflow:hidden; margin-bottom:0.4rem; }
+.storage-fill { height:100%; border-radius:4px; background:linear-gradient(90deg, var(--accent), var(--accent-secondary)); transition:width 0.4s; }
+.storage-meta { display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:0.72rem; color:var(--text-dim); }
+
+/* Info card */
+.info-card { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:1rem 1.2rem; margin-bottom:1rem; }
+.info-card-row { display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border); }
+.info-card-row:last-child { border-bottom:none; }
+.info-card-label { font-family:var(--font-mono); font-size:0.75rem; color:var(--text-dim); }
+.info-card-value { font-family:var(--font-mono); font-size:0.8rem; color:var(--text); }
+
+/* Toast */
+.toast { position:fixed; bottom:2rem; right:2rem; background:var(--bg-card); border:1px solid var(--border-accent); border-radius:10px; padding:0.8rem 1.2rem; font-size:0.88rem; color:var(--accent); display:flex; align-items:center; gap:0.5rem; box-shadow:0 8px 32px rgba(0,0,0,0.4); transform:translateY(100px); opacity:0; transition:all 0.3s ease; z-index:1000; }
+.toast.show { transform:translateY(0); opacity:1; }
+
+@media (max-width: 900px) {
+  .sidebar { display:none; }
+  .main-content { padding:1.5rem; }
+  .form-row-inline { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <a href="dashboard.html" class="sidebar-logo">
+      <svg viewBox="0 0 28 28" fill="none"><path d="M14 2.5L4 7v7c0 6.1 4.3 11.5 10 13 5.7-1.5 10-6.9 10-13V7L14 2.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="14" cy="11" r="2" fill="currentColor"/><circle cx="9" cy="17" r="1.3" fill="currentColor"/><circle cx="19" cy="17" r="1.3" fill="currentColor"/><circle cx="14" cy="21" r="1.3" fill="currentColor"/><path d="M14 13v2.5l-4 2M14 15.5l4 2M9 17l5 4M19 17l-5 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span style="color:var(--accent)">local</span><span class="logo-dash">-</span><span style="color:var(--accent)">ai</span><span style="color:var(--text-dim)">.run</span>
+    </a>
+    <nav class="sidebar-nav">
+      <div class="sidebar-section">Navigation</div>
+      <a class="sidebar-item" href="dashboard.html"><span class="sidebar-item-icon">📊</span> Dashboard</a>
+      <a class="sidebar-item" href="chat.html"><span class="sidebar-item-icon">💬</span> Chat with Files</a>
+      <a class="sidebar-item"><span class="sidebar-item-icon">🔊</span> Text to Audio</a>
+      <div class="sidebar-section" style="margin-top:1.2rem;">Coming Soon</div>
+      <a class="sidebar-item" style="opacity:0.4;cursor:default;"><span class="sidebar-item-icon">🖼️</span> Image Generation</a>
+      <a class="sidebar-item" style="opacity:0.4;cursor:default;"><span class="sidebar-item-icon">📝</span> Summarizer</a>
+      <a class="sidebar-item" style="opacity:0.4;cursor:default;"><span class="sidebar-item-icon">🔍</span> Semantic Search</a>
+      <div class="sidebar-section" style="margin-top:1.2rem;">System</div>
+      <a class="sidebar-item active"><span class="sidebar-item-icon">⚙️</span> Settings</a>
+      <a class="sidebar-item" href="model-engines.html"><span class="sidebar-item-icon">🔌</span> Model Engines</a>
+    </nav>
+    <div class="sidebar-footer"><div class="sidebar-user"><div class="user-avatar">A</div><div class="user-info"><div class="user-name">Ahmad</div><div class="user-role">admin</div></div></div></div>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header">
+      <h1 class="page-title">Settings</h1>
+      <p class="page-desc">Manage your instance configuration, profile, and storage.</p>
+    </div>
+
+    <!-- Tabs -->
+    <div class="settings-tabs">
+      <div class="settings-tab active" onclick="switchTab('general')">General</div>
+      <div class="settings-tab" onclick="switchTab('storage')">Storage</div>
+      <div class="settings-tab" onclick="switchTab('security')">Security</div>
+      <div class="settings-tab" onclick="switchTab('advanced')">Advanced</div>
+    </div>
+
+    <!-- ═══ GENERAL TAB ═══ -->
+    <div class="tab-panel active" id="tab-general">
+      <div class="settings-section">
+        <div class="settings-section-title">Profile</div>
+        <div class="settings-section-desc">Your account information for this instance.</div>
+        <div class="form-row-inline">
+          <div class="form-row">
+            <label class="form-label">Display Name</label>
+            <input class="form-input" type="text" value="Ahmad">
+          </div>
+          <div class="form-row">
+            <label class="form-label">Email</label>
+            <input class="form-input" type="email" value="ahmad@company.com">
+          </div>
+        </div>
+        <div class="form-row">
+          <label class="form-label">Role</label>
+          <input class="form-input" type="text" value="Administrator" disabled>
+          <div class="form-hint">Role can only be changed by another admin.</div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Appearance</div>
+        <div class="settings-section-desc">Customize the look and feel of the interface.</div>
+        <div class="form-row-inline">
+          <div class="form-row">
+            <label class="form-label">Theme</label>
+            <select class="form-select">
+              <option selected>Dark (Default)</option>
+              <option>Light</option>
+              <option>System</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Accent Color</label>
+            <select class="form-select">
+              <option selected>Emerald</option>
+              <option>Cyan</option>
+              <option>Violet</option>
+              <option>Amber</option>
+              <option>Rose</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <label class="form-label">Language</label>
+          <select class="form-select">
+            <option selected>English</option>
+            <option>Español</option>
+            <option>Français</option>
+            <option>Deutsch</option>
+            <option>日本語</option>
+            <option>中文</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Notifications</div>
+        <div class="toggle-row">
+          <div class="toggle-info"><div class="toggle-title">Model download complete</div><div class="toggle-desc">Notify when a model finishes downloading</div></div>
+          <div class="toggle-switch on" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info"><div class="toggle-title">File indexing complete</div><div class="toggle-desc">Notify when file indexing and embedding generation finishes</div></div>
+          <div class="toggle-switch on" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info"><div class="toggle-title">System errors</div><div class="toggle-desc">Show alerts for service failures or connection issues</div></div>
+          <div class="toggle-switch on" onclick="this.classList.toggle('on')"></div>
+        </div>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn-save" onclick="showToast()">Save Changes</button>
+        <button class="btn-outline">Cancel</button>
+      </div>
+    </div>
+
+    <!-- ═══ STORAGE TAB ═══ -->
+    <div class="tab-panel" id="tab-storage">
+      <div class="settings-section">
+        <div class="settings-section-title">Storage Usage</div>
+        <div class="settings-section-desc">Overview of disk space used by local-ai services.</div>
+
+        <div class="info-card">
+          <div class="info-card-row"><span class="info-card-label">Total Allocated</span><span class="info-card-value">50.0 GB</span></div>
+          <div class="info-card-row"><span class="info-card-label">Used</span><span class="info-card-value" style="color:var(--accent)">12.4 GB</span></div>
+          <div class="info-card-row"><span class="info-card-label">Available</span><span class="info-card-value">37.6 GB</span></div>
+        </div>
+
+        <div class="storage-bar-container">
+          <div class="storage-bar"><div class="storage-fill" style="width:24.8%"></div></div>
+          <div class="storage-meta"><span>24.8% used</span><span>37.6 GB free</span></div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Breakdown</div>
+        <div class="info-card">
+          <div class="info-card-row"><span class="info-card-label">🧠 Models (Ollama)</span><span class="info-card-value">8.2 GB</span></div>
+          <div class="info-card-row"><span class="info-card-label">📁 Uploaded Files</span><span class="info-card-value">2.8 GB</span></div>
+          <div class="info-card-row"><span class="info-card-label">🔗 Vector Embeddings</span><span class="info-card-value">940 MB</span></div>
+          <div class="info-card-row"><span class="info-card-label">💬 Chat History</span><span class="info-card-value">86 MB</span></div>
+          <div class="info-card-row"><span class="info-card-label">🔊 Generated Audio</span><span class="info-card-value">340 MB</span></div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">File Upload Limits</div>
+        <div class="form-row-inline">
+          <div class="form-row">
+            <label class="form-label">Max File Size</label>
+            <select class="form-select">
+              <option>25 MB</option>
+              <option selected>50 MB</option>
+              <option>100 MB</option>
+              <option>200 MB</option>
+              <option>500 MB</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Max Files per Chat</label>
+            <select class="form-select">
+              <option>5</option>
+              <option selected>10</option>
+              <option>25</option>
+              <option>50</option>
+              <option>Unlimited</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn-save" onclick="showToast()">Save Changes</button>
+        <button class="btn-outline">Clear Cache</button>
+      </div>
+    </div>
+
+    <!-- ═══ SECURITY TAB ═══ -->
+    <div class="tab-panel" id="tab-security">
+      <div class="settings-section">
+        <div class="settings-section-title">Change Password</div>
+        <div class="settings-section-desc">Update your admin account password.</div>
+        <div class="form-row">
+          <label class="form-label">Current Password</label>
+          <input class="form-input" type="password" placeholder="Enter current password">
+        </div>
+        <div class="form-row-inline">
+          <div class="form-row">
+            <label class="form-label">New Password</label>
+            <input class="form-input" type="password" placeholder="Min 8 characters">
+          </div>
+          <div class="form-row">
+            <label class="form-label">Confirm New Password</label>
+            <input class="form-input" type="password" placeholder="Re-enter password">
+          </div>
+        </div>
+        <button class="btn-save" onclick="showToast()">Update Password</button>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Access Control</div>
+        <div class="toggle-row">
+          <div class="toggle-info"><div class="toggle-title">Require authentication</div><div class="toggle-desc">Users must log in to access the platform</div></div>
+          <div class="toggle-switch on" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info"><div class="toggle-title">Allow user registration</div><div class="toggle-desc">New users can create their own accounts</div></div>
+          <div class="toggle-switch" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info"><div class="toggle-title">API key access</div><div class="toggle-desc">Allow external tools to connect via API keys</div></div>
+          <div class="toggle-switch" onclick="this.classList.toggle('on')"></div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Session</div>
+        <div class="form-row">
+          <label class="form-label">Session Timeout</label>
+          <select class="form-select">
+            <option>30 minutes</option>
+            <option>1 hour</option>
+            <option selected>4 hours</option>
+            <option>24 hours</option>
+            <option>Never</option>
+          </select>
+          <div class="form-hint">Auto-logout after inactivity period.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ ADVANCED TAB ═══ -->
+    <div class="tab-panel" id="tab-advanced">
+      <div class="settings-section">
+        <div class="settings-section-title">Instance Info</div>
+        <div class="info-card">
+          <div class="info-card-row"><span class="info-card-label">Version</span><span class="info-card-value">v1.0.0</span></div>
+          <div class="info-card-row"><span class="info-card-label">Instance ID</span><span class="info-card-value">lai_8f3k2m9x</span></div>
+          <div class="info-card-row"><span class="info-card-label">Hostname</span><span class="info-card-value">localhost:3000</span></div>
+          <div class="info-card-row"><span class="info-card-label">Uptime</span><span class="info-card-value">3d 14h 22m</span></div>
+          <div class="info-card-row"><span class="info-card-label">Docker Network</span><span class="info-card-value">local-ai_default</span></div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Logging & Debug</div>
+        <div class="toggle-row">
+          <div class="toggle-info"><div class="toggle-title">Enable debug logging</div><div class="toggle-desc">Write verbose logs to Docker stdout (may impact performance)</div></div>
+          <div class="toggle-switch" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info"><div class="toggle-title">Log queries to file</div><div class="toggle-desc">Save all queries and responses to a local audit log</div></div>
+          <div class="toggle-switch on" onclick="this.classList.toggle('on')"></div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Export & Backup</div>
+        <div class="settings-section-desc">Export your data for backup or migration.</div>
+        <div class="btn-group">
+          <button class="btn-outline" onclick="showToast('Export started...')">📦 Export All Data</button>
+          <button class="btn-outline">📋 Export Chat History</button>
+          <button class="btn-outline">📄 Export Logs</button>
+        </div>
+      </div>
+
+      <div class="danger-zone">
+        <div class="danger-zone-title">⚠️ Danger Zone</div>
+        <div class="danger-zone-desc">Irreversible actions. Proceed with caution.</div>
+        <div class="danger-item">
+          <div class="danger-item-info"><h4>Delete all chat history</h4><p>Permanently remove all conversations and messages.</p></div>
+          <button class="btn-danger">Delete Chats</button>
+        </div>
+        <div class="danger-item">
+          <div class="danger-item-info"><h4>Delete all files & embeddings</h4><p>Remove all uploaded files and their vector embeddings.</p></div>
+          <button class="btn-danger">Delete Files</button>
+        </div>
+        <div class="danger-item">
+          <div class="danger-item-info"><h4>Factory reset</h4><p>Wipe everything and return to the onboarding screen.</p></div>
+          <button class="btn-danger">Reset Instance</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div class="toast" id="toast">✔ Settings saved</div>
+
+<script>
+function switchTab(id) {
+  document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('tab-' + id).classList.add('active');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  if (msg) t.textContent = '✔ ' + msg;
+  else t.textContent = '✔ Settings saved';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+</script>
+</body>
+</html>
