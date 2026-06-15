@@ -64,30 +64,6 @@ Cloud AI services route your conversations and uploaded files through third-part
 
 Six containers, one Docker network, zero external dependencies after install.
 
-## Manual Install (Without the One-Liner)
-
-If you prefer to inspect the install steps:
-
-```bash
-# 1. Clone
-git clone https://github.com/360solutions-dev/local-ai.git
-cd local-ai
-
-# 2. Setup environment
-cp .env.example .env
-# Edit .env — change DJANGO_SECRET_KEY, POSTGRES_PASSWORD, etc.
-
-# 3. Pull pre-built images and start
-docker compose -f docker-compose.release.yml pull
-docker compose -f docker-compose.release.yml up -d
-
-# 4. Add to /etc/hosts
-echo "127.0.0.1 local-ai.localhost api.local-ai.localhost" | sudo tee -a /etc/hosts
-
-# 5. Open browser
-open http://local-ai.localhost
-```
-
 ## Clone & Run From Source
 
 Building from a clone (for development or to customize images) needs a couple of
@@ -133,16 +109,8 @@ The setup script:
 models), `--keep-volumes` (keep your data), `--remove-env`, `--yes`. On Windows:
 `-RemoveOllama`, `-KeepVolumes`, `-RemoveEnv`, `-Yes`.
 
-### Manual clone (do it yourself)
-
-```bash
-git clone https://github.com/360solutions-dev/local-ai.git
-cd local-ai
-cp .env.example .env       # then edit secrets + pick your Ollama target
-docker compose up --build -d
-```
-
-See [Manual install (Docker Compose) →](https://docs.local-ai.run/getting-started#manual-install)
+Prefer to run each step by hand instead of the script? See
+[Manual install (Docker Compose) →](https://docs.local-ai.run/getting-started#manual-install)
 for the full step-by-step (env, migrations, model pull, hosts entry).
 
 ## Configuration
@@ -219,8 +187,7 @@ Quick start for contributors:
 ```bash
 git clone https://github.com/360solutions-dev/local-ai.git
 cd local-ai
-cp .env.example .env
-docker compose up --build -d
+./setup.sh          # sets up .env, Ollama, and starts the stack
 # Edit code in frontend/ or backend/ — hot reload is on
 ```
 
